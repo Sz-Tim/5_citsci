@@ -1,5 +1,4 @@
-# Opération Fourmis Repo 5
-## Citizen Science
+# Opération Fourmis: Citizen Science
 
 ![img](https://wp.unil.ch/fourmisvaud/files/2019/03/Titre_OrangeViolet.png)
 
