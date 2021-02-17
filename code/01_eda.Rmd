@@ -2,12 +2,12 @@
 title: "Opération Fourmis Public Inventory EDA"
 author: "Tim Szewczyk"
 output:
-  html_notebook:
+  html_document:
+    df_print: paged
     toc: yes
   pdf_document:
     toc: yes
-  html_document:
-    df_print: paged
+  html_notebook:
     toc: yes
 ---
 
@@ -205,7 +205,7 @@ saveRDS(names(lc_pt.join %>%
                        -LONGITUDE, -LATITUDE)),
         paste0(gis_dir, "opfo_public_lc_NAMES.rds"))
 ```
-```{r habitat_load, echo=T, results='hide', message=F}
+```{r habitat_load, echo=F, results='hide', message=F}
 # Run spatial join one time only because of processing time
 # Loading results of st_join(., lc)
 lc_pt.join <- st_read(paste0(gis_dir, "opfo_public_lc_pts.shp")) %>%
@@ -314,9 +314,9 @@ Many of the habitats used for the OpFo structured samples are unlikely to have d
 
 ### Forest  
 Forests are generally large habitat polygons, and most `HABITAT` descriptions including the word *forêt* should be describing tubes collected in forest habitat. Edges, borders, and clearings can be filtered out to look at a sort of 'best case' scenario.
-```{r habitat_entries_forest, warning=F, message=F}
+```{r habitat_entries_forest, echo=F, warning=F, message=F}
 # Forest is maybe most straightforward, but it will also include edges and clearings
-sum(grepl('[f,F]or.t', lc.df$HABITAT))
+cat("Descriptions with 'for*t':", sum(grepl('[f,F]or.t', lc.df$HABITAT)))
 tabyl(grep('[f,F]or.t', lc.df$HABITAT, value=T)) %>% select(1,2) %>% 
   setNames(c("HABITAT with for*t", "count")) %>% as_tibble %>%
   mutate(`HABITAT with for*t`=str_sub(`HABITAT with for*t`, 1, 60))
@@ -367,8 +367,8 @@ The 10m buffer ends up including a lot more `Autre`, indicating that those point
 
 ### Lisière  
 The *a priori* expectation is that the point locations should be somewhat better for narrow habitat types like `lisière`. I would also expect poor performance across all methods, since inaccuracy in the point location is likely to move the point outside the habitat polygon, and buffers will include more non-target habitat types.  
-```{r habitat_entries_lisiere, warning=F, message=F}
-sum(grepl('lisi.re', lc.df$HABITAT))
+```{r habitat_entries_lisiere, echo=F, warning=F, message=F}
+cat("Descriptions with 'lisi.re':", sum(grepl('lisi.re', lc.df$HABITAT)))
 tabyl(grep('lisi.re', lc.df$HABITAT, value=T)) %>% select(1,2) %>% 
   setNames(c("Edge HABITAT", "count")) %>% as_tibble %>%
   mutate(`Edge HABITAT`=str_sub(`Edge HABITAT`, 1, 60))
@@ -415,8 +415,9 @@ As expected, the point locations capture `lisière` best, but it is still only 1
 
 ### Roads  
 Like for `lisière`, the *a priori* expectation is that the point locations should be better for `transport`, but with relatively poor performance across all methods. There are many descriptions in `HABITAT` that use the word *chemin*, but that's probably used more often for trails rather than actual roads.  
-```{r habitat_entries_transport, warning=F, message=F}
-sum(grepl('rue($| )|route', lc.df$HABITAT))
+```{r habitat_entries_transport, echo=F, warning=F, message=F}
+cat("Descriptions with 'rue' or 'route':", 
+    sum(grepl('rue($| )|route', lc.df$HABITAT)))
 tabyl(grep('rue($| )|route', lc.df$HABITAT, value=T)) %>% select(1,2) %>% 
   setNames(c("Road HABITAT", "count")) %>% as_tibble %>%
   mutate(`Road HABITAT`=str_sub(`Road HABITAT`, 1, 60))
@@ -463,9 +464,11 @@ More tubes with `HABITAT` descriptions including *rue* and *route* are classifie
 
 ### Zone Construite  
 The `ZoneConstruite` category should also be unambiguous. 
-```{r habitat_entries_ZC, warning=F, message=F}
+```{r habitat_entries_ZC, echo=F, warning=F, message=F}
 # This should be as good of a match as is possible
 ZC_keywords <- paste("maison", "appartement", "étage", "balcon", "cuisine", sep="|")
+cat("ZC keywords:", ZC_keywords)
+cat("Descriptions with keywords:", sum(grepl(ZC_keywords, lc.df$HABITAT)))
 tabyl(grep(ZC_keywords, lc.df$HABITAT, value=T)) %>% select(1,2) %>% 
   setNames(c("ZC HABITAT", "count")) %>% as_tibble %>%
   mutate(`ZC HABITAT`=str_sub(`ZC HABITAT`, 1, 60))
@@ -514,9 +517,10 @@ Generally good correspondence, with perhaps slightly better matching using the 5
 # Gardens  
 ## `HABITAT` descriptions and OpFo habitats  
 Some of the `HABITAT` descriptions specify that they were collected in gardens. My expectation is that these tubes should almost entirely categorized as `ZoneConstruite`, `Autre`, and `CulturePerm`. 
-```{r habitat_entries_garden, warning=F, message=F}
+```{r habitat_entries_garden, echo=F, warning=F, message=F}
 jardin_keywords <- paste("jardin", "potag", sep="|")
-sum(grepl(jardin_keywords, lc.df$HABITAT))
+cat("Descriptions with 'jardin' or 'potag*':", 
+    sum(grepl(jardin_keywords, lc.df$HABITAT)))
 tabyl(grep(jardin_keywords, lc.df$HABITAT, value=T)) %>% select(1,2) %>% 
   setNames(c("jardin HABITAT", "count")) %>% as_tibble %>%
   mutate(`jardin HABITAT`=str_sub(`jardin HABITAT`, 1, 60))
@@ -604,7 +608,8 @@ A <- ggplot(VD_raw, aes(fill=pop)) + geom_sf(size=0.1) +
         legend.direction="horizontal", 
         legend.key.height=unit(0.2, "cm"),
         legend.key.width=unit(0.35, "cm"),
-        legend.text=element_text(size=5))
+        legend.text=element_text(size=5),
+        title=element_text(size=8))
 B <- ggplot(VD_raw, aes(fill=log(pop))) + geom_sf(size=0.1) +
   ggtitle("2019 Population (log)") +
   scale_fill_viridis_c("") +
@@ -613,7 +618,8 @@ B <- ggplot(VD_raw, aes(fill=log(pop))) + geom_sf(size=0.1) +
         legend.direction="horizontal", 
         legend.key.height=unit(0.2, "cm"),
         legend.key.width=unit(0.35, "cm"),
-        legend.text=element_text(size=5))
+        legend.text=element_text(size=5),
+        title=element_text(size=8))
 C <- ggplot(VD_raw, aes(fill=as.numeric(popDens))) + geom_sf(size=0.1) +
   ggtitle("2019 Population Density (pop/km2)") +
   scale_fill_viridis_c("") +
@@ -622,7 +628,8 @@ C <- ggplot(VD_raw, aes(fill=as.numeric(popDens))) + geom_sf(size=0.1) +
         legend.direction="horizontal", 
         legend.key.height=unit(0.2, "cm"),
         legend.key.width=unit(0.35, "cm"),
-        legend.text=element_text(size=5))
+        legend.text=element_text(size=5),
+        title=element_text(size=8))
 ggpubr::ggarrange(A, B, C, nrow=1)
 ```
 
@@ -642,7 +649,7 @@ hist(log(as.numeric(VD_raw$popDens)), xlab="2019 log density (log(pop/km2))", ma
 
 ### OpFo habitats  
 Using the habitat types from the structured samples, the public dataset clearly overrepresents `ZoneConstruite` and underrepresents `Autre`.  
-```{r OpFo_props, echo=FALSE, message=FALSE}
+```{r OpFo_props, echo=FALSE, message=FALSE, warning=F}
 full_join(lc %>% st_set_geometry(NULL) %>% group_by(Categorie) %>%
             summarise(Area=sum(area)) %>% ungroup %>%
             mutate(Vaud=as.numeric(Area/sum(Area))) %>%
@@ -674,7 +681,7 @@ full_join(lc %>% st_set_geometry(NULL) %>% group_by(Categorie) %>%
 
 ### CORINE  
 Similarly with the CORINE dataset, category *112 Discontinuous urban fabric* is very overrepresented, with clear underrepresentation for *211 Non-irrigated arable land* and *312 Coniferous forest*.   
-```{r corine_props, echo=FALSE, message=FALSE}
+```{r corine_props, echo=FALSE, message=FALSE, warning=F}
 full_join(corine %>% st_set_geometry(NULL) %>% group_by(CODE_18) %>%
             summarise(Area=sum(area)) %>% ungroup %>%
             mutate(Vaud=as.numeric(Area/sum(Area))) %>%
@@ -714,7 +721,7 @@ read_csv(paste0(gis_dir, "corine_legend.csv")) %>%
 
 ### Detailed land use  
 For the land use, many crops are underrepresented, while pastures tend to be overrepresented. This is not really surprising given where people would be expected to go to collect ants.  
-```{r landuse_props, echo=FALSE, message=FALSE}
+```{r landuse_props, echo=FALSE, message=FALSE, warning=F}
 full_join(open_use %>% st_set_geometry(NULL) %>% group_by(affectatio) %>%
             summarise(Area=sum(area)) %>% ungroup %>%
             mutate(Vaud=as.numeric(Area/sum(Area))) %>%
@@ -810,8 +817,8 @@ Many samples were collected near paths, residential roads, and service roads.
 ```{r road_distances, echo=F}
 cat("Summary of distances to the nearest road (m):\n")
 summary(lc.df$road_dist)
-cat("\nFurther than 200m:", sum(as.numeric(lc.df$road_dist)>200), 
-    "\nFurther than 400m:", sum(as.numeric(lc.df$road_dist)>400))
+cat("Further than 200m:", sum(as.numeric(lc.df$road_dist)>200), "tubes", 
+    "\nFurther than 400m:", sum(as.numeric(lc.df$road_dist)>400), "tubes")
 par(mfrow=c(1,2))
 hist(lc.df$road_dist, xlab="Distance to nearest road (m)", main="")
 hist(log(as.numeric(lc.df$road_dist)), 
@@ -820,7 +827,7 @@ hist(log(as.numeric(lc.df$road_dist)),
 
 As should be expected, most points are quite close to a road or path. A small number are quite far from any trail in the dataset. 
 
-```{r road_distances_type, echo=F}
+```{r road_distances_type, echo=F, message=F, warning=F}
 ggplot(lc.df, aes(as.numeric(road_dist), y=road_nearest_type)) + 
   ggridges::geom_density_ridges(size=0.2, alpha=0.9, rel_min_height=0.001) + 
   labs(x="Distance to nearest road (m)", y="Nearest road type")
