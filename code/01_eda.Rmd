@@ -26,15 +26,16 @@ theme_set(theme_bw() + theme(panel.grid.minor=element_blank()));
 opfo_dir <- "~/Documents/unil/opfo_main/1_opfo/"
 gis_dir <- "~/Documents/unil/opfo_main/2_gis/data/VD_21781/"
 walk(paste0(opfo_dir, "code/", c("lc_cols", "00_fn"), ".R"), source)
-buffer_col <- c('10m'="#b15928", '5m'="#1f78b4", "Point"="grey30")
+buffer_col <- c('10m'="#b15928", '5m'="#1f78b4", "Point"="grey30", "Vaud"="#238443")
 
 # GIS data
+VD_pop <- read_csv(paste0(gis_dir, "VD_2019_popCommune.csv"))
 VD_raw <- st_read(paste0(gis_dir, "Vaud_boundaries.shp")) %>%
   filter(!grepl("Lac ", NAME)) %>%
-  select(NAME, EINWOHNERZ) %>%
-  mutate(area=st_area(.), 
-         popDens=EINWOHNERZ/(as.numeric(area)/10000),
-         llpopDens=log(EINWOHNERZ)/log(as.numeric(area)))
+  select(NAME, BFS_NUMMER) %>%
+  mutate(pop=VD_pop$Population[match(BFS_NUMMER, VD_pop$Code)],
+         area=units::set_units(st_area(.), "km2"), 
+         popDens=pop/area)
 VD <- st_union(VD_raw)
 lc <- st_read(paste0(gis_dir, "lc_21781.shp")) %>% st_set_crs(st_crs(VD)) %>%
   mutate(area=st_area(.))
@@ -43,7 +44,8 @@ open_use <- st_read(paste0(gis_dir, "open_landuse_21781.shp")) %>%
 corine <- st_read(paste0(gis_dir, "corine_VD_21781.shp")) %>%
   mutate(area=st_area(.))
 bldg <- st_read(paste0(gis_dir, "buildings_VD_21781.shp"))
-roads <- st_read(paste0(gis_dir, "roads_VD_21781.shp")) 
+roads <- st_read(paste0(gis_dir, "roads_VD_21781.shp")) %>%
+  mutate(len=st_length(.))
 
 # ant data
 ant <- load_ant_data(clean_spp=F, full_pub=T)
@@ -125,8 +127,8 @@ pub_filt <- ant$pub %>%
 
 
 ```{r buffer_creation}
-pub.5m <- ant$pub %>% st_buffer(dist=5)
-pub.10m <- ant$pub %>% st_buffer(dist=10)
+pub.5m <- pub_filt %>% st_buffer(dist=5)
+pub.10m <- pub_filt %>% st_buffer(dist=10)
 ```
 
 
@@ -146,7 +148,7 @@ pub.10m <- ant$pub %>% st_buffer(dist=10)
 There are three land cover / land use datasets available:  
 - Habitat layer created for the structured sampling  
 - [CORINE Land Cover](https://land.copernicus.eu/pan-european/corine-land-cover/clc2018), which has a [broader legend](https://image.discomap.eea.europa.eu/arcgis/rest/services/Corine/CLC2018_WM/MapServer/legend) and is consistent across Europe, but uses a minimum mapping unit of 25 ha (500mx500m)  
-- Land use for largely agricultural land in Vaud  
+- Land use for largely agricultural land in Vaud in 2019  
   
 CORINE and the Opération Fourmis dataset have full coverage across Vaud, while the detailed land use dataset is mostly restricted to open canopy areas in the lower elevations (OpFo, CORINE, VD).  
 
@@ -169,7 +171,7 @@ Zoomed in close on a couple of points (OpFo, CORINE, VD):
 ![CORINE](../assets/CORINE_3.png){width="33%"}
 ![VD](../assets/VD_data_3.png){width="33%"}  
 
-The dataset from Vaud primarily describes open canopy areas, with 3-digit codes where the first digit indicates (roughly) *crops* (5--), *pastures* (6--), *permanent agriculture* (7--), *other (?)* (8--), and *other (?)* (9--). This table shows the categories with corresponding area and percent of the total.  
+The land use data from the canton describes the reported usage in 2019, generally for open canopy habitats. The usage is quite detailed, with a focus on agriculture. Organic vs. conventional methods are not included. It uses 3-digit codes where the first digit indicates (roughly) *500: crops*, *600: pastures*, *700: permanent agriculture*, *800: other?*, and *900: other?*. This table shows the categories with corresponding area and percent of the total.  
 ```{r VD_data, echo=FALSE, message=FALSE}
 open_use %>% rename(Category=affectatio) %>% st_set_geometry(NULL) %>%
   group_by(Category) %>% 
@@ -185,7 +187,7 @@ CORINE is often used in the literature, but it probably is not very helpful for 
 ## Habitat extraction: Points and buffers  
 Using the same habitat categories as the structured samples (first column of plots above), we can calculate the habitat for each tube as the point location, the dominant habitat within 5m, and the dominant habitat within 10m.
 ```{r habitat_calc, eval=FALSE, message=FALSE, warning=FALSE, include=FALSE}
-lc_pt.join <- st_join(ant$pub, lc)
+lc_pt.join <- st_join(pub_filt, lc)
 lc_5m.join <- st_join(pub.5m, lc)
 lc_10m.join <- st_join(pub.10m, lc)
 st_write(lc_pt.join %>% select(-SWISSCOORDINATE_X, -SWISSCOORDINATE_Y,
@@ -216,7 +218,7 @@ lc_10m.join <- st_read(paste0(gis_dir, "opfo_public_lc_10m.shp")) %>%
 
 We can assign the habitat type for each tube as either the habitat at the point location, ignoring uncertainty, or the dominant habitat within the 5m or 10m buffer. Larger buffers will obviously include more habitat categories, and samples collected along roads or edges would most likely be mis-categorized since those habitat types are unlikely to have the greatest coverage within a 5m or 10m radius. Conversely, even slight inaccuracies in the coordinates would result in mis-categorization of these samples based on the point locations. Assigning a habitat to each point with any degree of confidence is not trivial. 
 ```{r habitat_buffers, echo=FALSE, message=FALSE, warning=FALSE}
-lc.df <- ant$pub %>% arrange(TubeNo) %>%
+lc.df <- pub_filt %>% arrange(TubeNo) %>%
   mutate(lc.pt=(lc_pt.join %>% mutate(area_j=st_area(.)) %>%
                   arrange(TubeNo, desc(area_j)) %>% 
                   group_by(TubeNo) %>%
@@ -230,19 +232,23 @@ lc.df <- ant$pub %>% arrange(TubeNo) %>%
                   group_by(TubeNo) %>%
                   summarise(Cat=first(Categorie)))$Cat,
          n_lc.5m=(lc_5m.join %>% arrange(TubeNo) %>% group_by(TubeNo) %>%
-           summarise(N=n_distinct(Categorie)))$N,
+                    summarise(N=n_distinct(Categorie)))$N,
          n_lc.10m=(lc_10m.join %>% arrange(TubeNo) %>% group_by(TubeNo) %>%
-           summarise(N=n_distinct(Categorie)))$N,
+                     summarise(N=n_distinct(Categorie)))$N,
          corine.pt=st_join(., corine)$CODE_18,
-         corine.5m=st_join(pub.5m %>% arrange(TubeNo), corine, largest=T)$CODE_18,
-         corine.10m=st_join(pub.10m %>% arrange(TubeNo), corine, largest=T)$CODE_18,
+         corine.5m=st_join(pub.5m %>% arrange(TubeNo), 
+                           corine, largest=T)$CODE_18,
+         corine.10m=st_join(pub.10m %>% arrange(TubeNo), 
+                            corine, largest=T)$CODE_18,
          n_corine.5m=(st_join(pub.5m, corine) %>% arrange(TubeNo) %>% 
-           group_by(TubeNo) %>% summarise(N=n_distinct(CODE_18)))$N,
+                        group_by(TubeNo) %>% summarise(N=n_distinct(CODE_18)))$N,
          n_corine.10m=(st_join(pub.10m, corine) %>% arrange(TubeNo) %>% 
-           group_by(TubeNo) %>% summarise(N=n_distinct(CODE_18)))$N,
+                         group_by(TubeNo) %>% summarise(N=n_distinct(CODE_18)))$N,
          open_use.pt=st_join(., open_use)$affectatio,
-         open_use.5m=st_join(pub.5m %>% arrange(TubeNo), open_use, largest=T)$affectatio,
-         open_use.10m=st_join(pub.10m %>% arrange(TubeNo), open_use, largest=T)$affectatio,
+         open_use.5m=st_join(pub.5m %>% arrange(TubeNo), 
+                             open_use, largest=T)$affectatio,
+         open_use.10m=st_join(pub.10m %>% arrange(TubeNo), 
+                              open_use, largest=T)$affectatio,
          n_open_use.5m=(st_join(pub.5m, open_use) %>% arrange(TubeNo) %>% 
            group_by(TubeNo) %>% summarise(N=n_distinct(affectatio)))$N,
          n_open_use.10m=(st_join(pub.10m, open_use) %>% arrange(TubeNo) %>% 
@@ -298,7 +304,7 @@ lc.df %>% st_set_geometry(NULL) %>%
 
 
 ## `HABITAT`: Comparison of reported and extracted OpFo habitats  
-The public samples included a field for habitat, and `r sum(!is.na(ant$pub$HABITAT))` tubes (`r paste0(round(sum(!is.na(ant$pub$HABITAT))/nrow(ant$pub)*100, 1), "%")`) include a free-form entry. However, these were not standardized, and there were `r n_distinct(ant$pub$HABITAT, na.rm=T)` unique responses. They range from extremely precise about where the ant was captured to rather general. Some seem to describe the diameter of the tree where the ant was collected.  
+The public samples included a field for habitat, and `r sum(!is.na(pub_filt$HABITAT))` tubes (`r paste0(round(sum(!is.na(pub_filt$HABITAT))/nrow(pub_filt)*100, 1), "%")`) include a free-form entry. However, these were not standardized, and there were `r n_distinct(pub_filt$HABITAT, na.rm=T)` unique responses. They range from extremely precise about where the ant was captured to rather general. Some seem to describe the diameter of the tree where the ant was collected.  
 ```{r habitat_entries, echo=FALSE}
 tabyl(str_sub(lc.df$HABITAT, 1, 60)) %>% select(1,2) %>% 
   setNames(c("HABITAT entries", "count")) %>% as_tibble
@@ -352,7 +358,7 @@ foret.df %>% select(Categorie, contains("n_")) %>%
   scale_fill_manual(values=buffer_col) +
   labs(x="", y="Percent", 
        title="Forest categorization works best with 5m buffer",
-       subtitle="But 25.7% of 'forest' tubes are not forest by 5m location") +
+       subtitle="But 25.3% of 'forest' tubes are not forest by 5m location") +
   theme(axis.text.x=element_text(angle=270, hjust=0, vjust=0.5))
 ```
 
@@ -448,7 +454,7 @@ road.df %>% select(Categorie, contains("n_")) %>%
   scale_y_continuous(labels=scales::percent_format()) + 
   scale_fill_manual(values=buffer_col) +
   labs(x="", y="Percent", 
-       title="35.5% of 'road' tubes are transport based on point location") +
+       title="35.2% of 'road' tubes are transport based on point location") +
   theme(axis.text.x=element_text(angle=270, hjust=0, vjust=0.5))
 ```
 
@@ -501,7 +507,7 @@ ZC.df %>% select(Categorie, contains("n_")) %>%
   theme(axis.text.x=element_text(angle=270, hjust=0, vjust=0.5))
 ```
 
-Generally good correspondence, with perhaps slightly better matching using the 5m buffer: 90.4% instead of 81.6% (points) or 85.6% (10m buffer). 
+Generally good correspondence, with perhaps slightly better matching using the 5m buffer: 90.2% instead of 82.1% (points) or 85.4% (10m buffer). 
 
 
 
@@ -552,7 +558,7 @@ jardin.df %>% select(Categorie, contains("n_")) %>%
   theme(axis.text.x=element_text(angle=270, hjust=0, vjust=0.5))
 ```
 
-The buffers both place about 95% of the tubes in `ZoneConstruite`, `Autre`, or `CulturePerm`, compared with 82% of the point locations, which include a higher percentage of `transport`.
+The buffers both place about 95% of the tubes in `ZoneConstruite`, `Autre`, or `CulturePerm`, compared with 83% of the point locations, which include a higher percentage of `transport`.
 
 
 
@@ -560,7 +566,7 @@ The buffers both place about 95% of the tubes in `ZoneConstruite`, `Autre`, or `
 
 ## Gardens in and out of CORINE-defined urban areas  
 As a first approximation, we could classify points as inside or outside urban areas using the CORINE land cover categories ([1-- indicate human-dominated types](https://image.discomap.eea.europa.eu/arcgis/rest/services/Corine/CLC2018_WM/MapServer/legend)). To categorize tubes as coming from gardens, there are two options: 1) use the `HABITAT` descriptions as above, including all tubes with *jardin* or *potage* in the description, or 2) using the *`r grep("jardin|potag", unique(open_use$affectatio), value=T)`* category in the Vaud land use dataset. Unfortunately, there are no tubes that are categorized as *`r grep("jardin|potag", unique(open_use$affectatio), value=T)`* based on location, regardless of buffering. 
-```{r corine_urban}
+```{r corine_urban, echo=FALSE}
 jardin_keywords <- paste("jardin", "potag", sep="|")
 HABITAT_jardin <- unique(grep(jardin_keywords, unique(lc.df$HABITAT), value=T))
 landuse_jardin <- grep(jardin_keywords, unique(open_use$affectatio), value=T)
@@ -575,7 +581,6 @@ lc.df <- lc.df %>% mutate(HAB_jardin=HABITAT %in% HABITAT_jardin,
                           corine_urbanCont.pt=grepl("111", corine.pt),
                           corine_urbanCont.5m=grepl("111", corine.5m),
                           corine_urbanCont.10m=grepl("111", corine.10m))
-any(lc.df$use_jardin.pt, lc.df$use_jardin.5m, lc.df$use_jardin.10m)
 
 # jardin HABITAT descriptions by corine category
 lc.df %>% st_set_geometry(NULL) %>% tabyl(HAB_jardin, corine_urban.pt) %>%
@@ -586,68 +591,242 @@ lc.df %>% st_set_geometry(NULL) %>% tabyl(HAB_jardin, corine_urban.10m) %>%
   knitr::kable(col.names=c("Garden", "Non-Urban", "Urban"), caption="Corine: 10m")
 ```
 
-There are too few tubes with CORINE classifications of *111 Continuous urban fabric*, which identifies parts of the few largest cities in Vaud. The *112 Discontinuous urban fabric* identifies most (but not all) towns.  
+There are too few tubes with CORINE classifications of *111 Continuous urban fabric*, which identifies parts of the few largest cities in Vaud. The *112 Discontinuous urban fabric* identifies most (but not all) towns, so the comparison of gardens between cities vs. non-cities would need to be between urban and non-urban categories.  
 ![CORINE](../assets/CORINE_urban.png){width="70%"}
+
+Another possibility would be to categorize communes based on population (that's the smallest unit I've found).  
+```{r map_population, echo=FALSE}
+A <- ggplot(VD_raw, aes(fill=pop)) + geom_sf(size=0.1) +
+  ggtitle("2019 Population") +
+  scale_fill_viridis_c("") +
+  theme(axis.text=element_blank(),
+        legend.position=c(0.25, 0.1), 
+        legend.direction="horizontal", 
+        legend.key.height=unit(0.2, "cm"),
+        legend.key.width=unit(0.35, "cm"),
+        legend.text=element_text(size=5))
+B <- ggplot(VD_raw, aes(fill=log(pop))) + geom_sf(size=0.1) +
+  ggtitle("2019 Population (log)") +
+  scale_fill_viridis_c("") +
+  theme(axis.text=element_blank(),
+        legend.position=c(0.25, 0.1), 
+        legend.direction="horizontal", 
+        legend.key.height=unit(0.2, "cm"),
+        legend.key.width=unit(0.35, "cm"),
+        legend.text=element_text(size=5))
+C <- ggplot(VD_raw, aes(fill=as.numeric(popDens))) + geom_sf(size=0.1) +
+  ggtitle("2019 Population Density (pop/km2)") +
+  scale_fill_viridis_c("") +
+  theme(axis.text=element_blank(),
+        legend.position=c(0.25, 0.1), 
+        legend.direction="horizontal", 
+        legend.key.height=unit(0.2, "cm"),
+        legend.key.width=unit(0.35, "cm"),
+        legend.text=element_text(size=5))
+ggpubr::ggarrange(A, B, C, nrow=1)
+```
+
+For the distribution of population sizes among communes, there isn't much of a clear breakpoint aside from Lausanne. 
+```{r hist_population, echo=F}
+par(mfrow=c(2,2))
+hist(VD_raw$pop, xlab="2019 Population", main="")
+hist(log(VD_raw$pop), xlab="2019 Population (log)", main="")
+hist(VD_raw$popDens, xlab="2019 density (pop/km2)", main="")
+hist(log(as.numeric(VD_raw$popDens)), xlab="2019 log density (log(pop/km2))", main="")
+```
 
 
 
 
 ## Habitat comparison to Vaud
 
-Using the habitat types from the structured samples, the public dataset clearly overrepresents XX.
-```{r habitat_props, message=FALSE}
-lc_prop <- lc %>% st_set_geometry(NULL) %>% group_by(Categorie) %>%
-  summarise(Area=sum(area)) %>% ungroup %>%
-  mutate(prop_VD=as.numeric(Area/sum(Area))) 
-knitr::kable(lc_prop, col.names=c("Categorie", "Area (VD)", "Proportion (VD)"))
+### OpFo habitats  
+Using the habitat types from the structured samples, the public dataset clearly overrepresents `ZoneConstruite` and underrepresents `Autre`.  
+```{r OpFo_props, echo=FALSE, message=FALSE}
+full_join(lc %>% st_set_geometry(NULL) %>% group_by(Categorie) %>%
+            summarise(Area=sum(area)) %>% ungroup %>%
+            mutate(Vaud=as.numeric(Area/sum(Area))) %>%
+            select(Categorie, Vaud),
+          lc.df %>% st_set_geometry(NULL) %>% group_by(lc.pt) %>%
+            summarise(N=n()) %>% ungroup %>%
+            rename(Categorie=lc.pt) %>%
+            mutate(Point=N/sum(N)) %>% select(Categorie, Point), 
+          by="Categorie") %>%
+  full_join(., lc.df %>% st_set_geometry(NULL) %>% group_by(lc.5m) %>%
+            summarise(N=n()) %>% ungroup %>%
+            rename(Categorie=lc.5m) %>%
+            mutate(`5m`=N/sum(N)) %>% select(Categorie, `5m`),
+            by="Categorie") %>%
+  full_join(., lc.df %>% st_set_geometry(NULL) %>% group_by(lc.10m) %>%
+            summarise(N=n()) %>% ungroup %>%
+            rename(Categorie=lc.10m) %>%
+            mutate(`10m`=N/sum(N)) %>% select(Categorie, `10m`),
+            by="Categorie") %>%
+  filter(!is.na(Categorie)) %>%
+  pivot_longer(2:5, names_to="Source", values_to="Proportion") %>%
+  ggplot(aes(x=Categorie, y=Proportion, fill=Source)) + 
+  geom_bar(position="dodge", stat="identity", colour="grey30", size=0.3) +
+  scale_y_continuous(labels=scales::percent_format()) + 
+  scale_fill_manual(values=buffer_col) +
+  labs(x="", y="Percent coverage", title="Opération Fourmis categories") +
+  theme(axis.text.x=element_text(angle=270, hjust=0, vjust=0.5))
 ```
+
+### CORINE  
+Similarly with the CORINE dataset, category *112 Discontinuous urban fabric* is very overrepresented, with clear underrepresentation for *211 Non-irrigated arable land* and *312 Coniferous forest*.   
+```{r corine_props, echo=FALSE, message=FALSE}
+full_join(corine %>% st_set_geometry(NULL) %>% group_by(CODE_18) %>%
+            summarise(Area=sum(area)) %>% ungroup %>%
+            mutate(Vaud=as.numeric(Area/sum(Area))) %>%
+            select(CODE_18, Vaud),
+          lc.df %>% st_set_geometry(NULL) %>% group_by(corine.pt) %>%
+            summarise(N=n()) %>% ungroup %>%
+            rename(CODE_18=corine.pt) %>%
+            mutate(Point=N/sum(N)) %>% select(CODE_18, Point), 
+          by="CODE_18") %>%
+  full_join(., lc.df %>% st_set_geometry(NULL) %>% group_by(corine.5m) %>%
+            summarise(N=n()) %>% ungroup %>%
+            rename(CODE_18=corine.5m) %>%
+            mutate(`5m`=N/sum(N)) %>% select(CODE_18, `5m`),
+            by="CODE_18") %>%
+  full_join(., lc.df %>% st_set_geometry(NULL) %>% group_by(corine.10m) %>%
+            summarise(N=n()) %>% ungroup %>%
+            rename(CODE_18=corine.10m) %>%
+            mutate(`10m`=N/sum(N)) %>% select(CODE_18, `10m`),
+            by="CODE_18") %>%
+  filter(!is.na(CODE_18)) %>%
+  pivot_longer(2:5, names_to="Source", values_to="Proportion") %>%
+  ggplot(aes(x=CODE_18, y=Proportion, fill=Source)) + 
+  geom_bar(position="dodge", stat="identity", colour="grey30", size=0.3) +
+  scale_y_continuous(labels=scales::percent_format()) + 
+  scale_fill_manual(values=buffer_col) +
+  labs(x="", y="Percent coverage", title="CORINE categories") +
+  theme(axis.text.x=element_text(angle=270, hjust=0, vjust=0.5))
+```
+
+For reference:  
+```{r CORINE_legend, echo=F, message=F, warning=F}
+read_csv(paste0(gis_dir, "corine_legend.csv")) %>% 
+  filter(CODE_18 %in% unique(corine$CODE_18)) %>%
+  select(Original) %>% rename(Category=Original)
+```
+
+
+### Detailed land use  
+For the land use, many crops are underrepresented, while pastures tend to be overrepresented. This is not really surprising given where people would be expected to go to collect ants.  
+```{r landuse_props, echo=FALSE, message=FALSE}
+full_join(open_use %>% st_set_geometry(NULL) %>% group_by(affectatio) %>%
+            summarise(Area=sum(area)) %>% ungroup %>%
+            mutate(Vaud=as.numeric(Area/sum(Area))) %>%
+            select(affectatio, Vaud),
+          lc.df %>% st_set_geometry(NULL) %>% group_by(open_use.pt) %>%
+            summarise(N=n()) %>% ungroup %>%
+            rename(affectatio=open_use.pt) %>% filter(!is.na(affectatio)) %>%
+            mutate(Point=N/sum(N)) %>% select(affectatio, Point), 
+          by="affectatio") %>%
+  full_join(., lc.df %>% st_set_geometry(NULL) %>% group_by(open_use.5m) %>%
+            summarise(N=n()) %>% ungroup %>%
+            rename(affectatio=open_use.5m) %>% filter(!is.na(affectatio)) %>%
+            mutate(`5m`=N/sum(N)) %>% select(affectatio, `5m`),
+            by="affectatio") %>%
+  full_join(., lc.df %>% st_set_geometry(NULL) %>% group_by(open_use.10m) %>%
+            summarise(N=n()) %>% ungroup %>%
+            rename(affectatio=open_use.10m) %>% filter(!is.na(affectatio)) %>%
+            mutate(`10m`=N/sum(N)) %>% select(affectatio, `10m`),
+            by="affectatio") %>%
+  filter(!is.na(affectatio)) %>%
+  filter(!(is.na(Point) & is.na(`5m`) & is.na(`10m`))) %>%
+  pivot_longer(2:5, names_to="Source", values_to="Proportion") %>%
+  ggplot(aes(x=affectatio, y=Proportion, fill=Source)) + 
+  geom_bar(position="dodge", stat="identity", colour="grey30", size=0.3) +
+  scale_y_continuous(labels=scales::percent_format()) + 
+  scale_fill_manual(values=buffer_col) +
+  labs(x="", y="Percent coverage", title="Vaud land use categories") +
+  theme(axis.text.x=element_text(angle=270, hjust=0, vjust=0.5, size=6),
+        legend.title=element_text(size=9),
+        legend.text=element_text(size=7),
+        legend.key.width=unit(0.5, "cm"),
+        legend.key.height=unit(0.5, "cm"), 
+        legend.position="bottom")
+```
+
+
+
 
 
 
 
 ----------
 
+# Proximity to human structures  
 
+For each tube, we can also use the location to calculate the distance to the nearest road and/or building, and potentially what type of road it is. This could be interesting for roads, since the dataset from OpenStreetMaps distinguishes everything from paths to highways. 
 
-# Vaud land use data  
-
-The land use data describes the reported usage in 2019, generally for open canopy habitats. The usage is quite precise, with a focus on agriculture. Organic vs. conventional methods are not included.
-```{r open_types, message=F}
-open_use %>% st_set_geometry(NULL) %>%
-  group_by(affectatio) %>% summarise(area=sum(area)) %>%
-  ungroup %>% mutate(`Percent (VD)`=as.numeric(round(area/sum(area)*100, 1)))
+```{r road_build_calc, include=FALSE}
+lc.df <- lc.df %>%
+  mutate(bldg_nearest=st_nearest_feature(., bldg),
+         bldg_dist=st_distance(., bldg[bldg_nearest,], by_element=T),
+         road_nearest=st_nearest_feature(., roads),
+         road_dist=st_distance(., roads[road_nearest,], by_element=T),
+         road_nearest_type=roads$fclass[road_nearest])
 ```
 
 
-```{r open_calc, echo=FALSE, message=FALSE, warning=FALSE}
+## Roads  
+```{r road_map_all, echo=F}
+ggplot(VD) + geom_sf() + geom_sf(data=roads, size=0.2, colour="deepskyblue3") +
+  theme(axis.text=element_blank(), 
+        panel.grid.major=element_blank())
+```
 
-open_use.df %>% st_set_geometry(NULL) %>% 
-  mutate('Point vs. 5m'=open_use.pt==open_use.5m,
-         'Point vs. 10m'=open_use.pt==open_use.10m,
-         '5m vs. 10m'=open_use.5m==open_use.10m) %>%
-  select(contains("vs.")) %>% 
-  pivot_longer(1:3, names_to="Comparison", values_to="Matching") %>%
-  filter(!is.na(Matching)) %>%
-  ggplot(aes(Comparison, fill=Matching)) + 
-  geom_hline(yintercept=0, size=0.3, colour="grey30") +
+There are `r n_distinct(roads$fclass)-2` different identified classes of roads or paths. 
+```{r road_types, echo=F, message=F}
+roads %>% st_set_geometry(NULL) %>% group_by(fclass) %>%
+  summarise(`Total length`=round(sum(units::set_units(len, "km")), 1)) %>% 
+  ungroup %>% rename(`Road types`=fclass) %>% select(2,1)
+```
+
+Here are maps for each different type of road, reducing them to only the top 15 most extensive categories (total length ≥ 97km).  
+```{r road_map_types, echo=F, message=F}
+top_15 <- (roads %>% st_set_geometry(NULL) %>% group_by(fclass) %>%
+             summarise(Total=round(sum(units::set_units(len, "km")), 1)) %>%
+             ungroup %>% arrange(desc(Total)))$fclass[1:15]
+ggplot(filter(roads, fclass %in% top_15)) + geom_sf(data=VD, size=0.2) + 
+  geom_sf(size=0.2, colour="deepskyblue3") + facet_wrap(~fclass, nrow=3) +
+  theme(axis.text=element_blank(), 
+        panel.grid.major=element_blank())
+```
+
+Buffering points should have minimal influence on distance to the nearest road, since the distance would be reduced by the buffer radius uniformly. The exception would be points nearer to a road than the buffer radius, which would all have a distance of 0m. The type of road nearest to the coordinates should be similarly (mostly) unaffected, though it is possible that a buffer could intersect multiple types of roads. For now, let's ignore that and just use the point locations.
+```{r road_types_sampled, echo=F}
+ggplot(lc.df, aes(road_nearest_type)) + 
   geom_bar(colour="grey30", size=0.3) + 
-  scale_fill_manual(values=c("gray", "#006d2c")) +
-  labs(x="", title="Dominant patterns in buffers mostly correspond with points")
+  theme(axis.text.x=element_text(angle=270, hjust=0, vjust=0.5)) + 
+  labs(x="", y="Count", title="Public inventory points: nearest road types")
+```
 
-open_use.df %>% st_set_geometry(NULL) %>% 
-  select(contains("n_open_use")) %>% 
-  rename("5m"=n_open_use.5m, "10m"=n_open_use.10m) %>%
-  pivot_longer(1:2, names_to="Buffer", values_to="N") %>% 
-  tabyl(N, Buffer) %>% adorn_percentages(denominator="col") %>% 
-  pivot_longer(2:3, names_to="Buffer", values_to="prop") %>% 
-  ggplot(aes(as.character(N), y=prop, fill=Buffer)) + 
-  geom_hline(yintercept=0, size=0.3, colour="grey30") +
-  geom_bar(position="dodge", stat="identity", colour="grey30", size=0.3) +
-  scale_y_continuous(labels=scales::percent_format()) + 
-  scale_fill_manual(values=buffer_col) +
-  labs(x="Number of land uses", y="Percent of tubes", 
-       title="Buffers mostly include just one land use type",
-       subtitle="(10m: 93.7%,  5m: 96.8%)")
+Many samples were collected near paths, residential roads, and service roads. 
+
+```{r road_distances, echo=F}
+cat("Summary of distances to the nearest road (m):\n")
+summary(lc.df$road_dist)
+cat("\nFurther than 200m:", sum(as.numeric(lc.df$road_dist)>200), 
+    "\nFurther than 400m:", sum(as.numeric(lc.df$road_dist)>400))
+par(mfrow=c(1,2))
+hist(lc.df$road_dist, xlab="Distance to nearest road (m)", main="")
+hist(log(as.numeric(lc.df$road_dist)), 
+     xlab="Log distance to nearest road (m)", main="")
+```
+
+As should be expected, most points are quite close to a road or path. A small number are quite far from any trail in the dataset. 
+
+```{r road_distances_type, echo=F}
+ggplot(lc.df, aes(as.numeric(road_dist), y=road_nearest_type)) + 
+  ggridges::geom_density_ridges(size=0.2, alpha=0.9, rel_min_height=0.001) + 
+  labs(x="Distance to nearest road (m)", y="Nearest road type")
 ```
 
 
+
+## Buildings  
+The building dataset doesn't include any usages or descriptions, but consists of building footprints across the whole canton. 
