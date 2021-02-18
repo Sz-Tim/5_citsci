@@ -3,11 +3,13 @@ title: "Opération Fourmis Public Inventory EDA"
 author: "Tim Szewczyk"
 output:
   html_document:
+    theme: spacelab
     df_print: paged
     toc: yes
   pdf_document:
     toc: yes
   html_notebook:
+    theme: spacelab
     toc: yes
 ---
 
@@ -21,7 +23,8 @@ The coordinates associated with the public inventory data are probably approxima
 
 ```{r setup, include=FALSE, message=FALSE, warning=FALSE}
 # libraries, functions, directories
-library(tidyverse); library(sf); library(ggsn); library(ggforce); library(janitor)
+library(tidyverse); library(sf); library(ggsn); library(ggforce); 
+library(janitor); library(vegan)
 theme_set(theme_bw() + theme(panel.grid.minor=element_blank())); 
 opfo_dir <- "~/Documents/unil/opfo_main/1_opfo/"
 gis_dir <- "~/Documents/unil/opfo_main/2_gis/data/VD_21781/"
@@ -152,24 +155,24 @@ There are three land cover / land use datasets available:
   
 CORINE and the Opération Fourmis dataset have full coverage across Vaud, while the detailed land use dataset is mostly restricted to open canopy areas in the lower elevations (OpFo, CORINE, VD).  
 
-![opfo](../assets/opfo_VD.png){width="33%"}
-![CORINE](../assets/CORINE_VD.png){width="33%"}
-![VD](../assets/VD_data_VD.png){width="33%"}  
+![opfo](../assets/small/opfo_VD.png){width="33%"}
+![CORINE](../assets/small/CORINE_VD.png){width="33%"}
+![VD](../assets/small/VD_data_VD.png){width="33%"}  
   
 Here is a random area within Vaud showing the differences. The grid is 1km x 1km, with the public inventory tubes shown as the small black points (with 5m and 10m buffers), and building footprints from open street maps. (OpFo, CORINE, VD).  
-![opfo](../assets/opfo.png){width="33%"}
-![CORINE](../assets/CORINE.png){width="33%"}
-![VD](../assets/VD_data.png){width="33%"}
+![opfo](../assets/small/opfo.png){width="33%"}
+![CORINE](../assets/small/CORINE.png){width="33%"}
+![VD](../assets/small/VD_data.png){width="33%"}
 
 Zoomed in on the edge of a town (OpFo, CORINE, VD):  
-![opfo](../assets/opfo_2.png){width="33%"}
-![CORINE](../assets/CORINE_2.png){width="33%"}
-![VD](../assets/VD_data_2.png){width="33%"}
+![opfo](../assets/small/opfo_2.png){width="33%"}
+![CORINE](../assets/small/CORINE_2.png){width="33%"}
+![VD](../assets/small/VD_data_2.png){width="33%"}
 
 Zoomed in close on a couple of points (OpFo, CORINE, VD):  
-![opfo](../assets/opfo_3.png){width="33%"}
-![CORINE](../assets/CORINE_3.png){width="33%"}
-![VD](../assets/VD_data_3.png){width="33%"}  
+![opfo](../assets/small/opfo_3.png){width="33%"}
+![CORINE](../assets/small/CORINE_3.png){width="33%"}
+![VD](../assets/small/VD_data_3.png){width="33%"}  
 
 The land use data from the canton describes the reported usage in 2019, generally for open canopy habitats. The usage is quite detailed, with a focus on agriculture. Organic vs. conventional methods are not included. It uses 3-digit codes where the first digit indicates (roughly) *500: crops*, *600: pastures*, *700: permanent agriculture*, *800: other?*, and *900: other?*. This table shows the categories with corresponding area and percent of the total.  
 ```{r VD_data, echo=FALSE, message=FALSE}
@@ -569,7 +572,7 @@ The buffers both place about 95% of the tubes in `ZoneConstruite`, `Autre`, or `
 
 
 ## Gardens in and out of CORINE-defined urban areas  
-As a first approximation, we could classify points as inside or outside urban areas using the CORINE land cover categories ([1-- indicate human-dominated types](https://image.discomap.eea.europa.eu/arcgis/rest/services/Corine/CLC2018_WM/MapServer/legend)). To categorize tubes as coming from gardens, there are two options: 1) use the `HABITAT` descriptions as above, including all tubes with *jardin* or *potage* in the description, or 2) using the *`r grep("jardin|potag", unique(open_use$affectatio), value=T)`* category in the Vaud land use dataset. Unfortunately, there are no tubes that are categorized as *`r grep("jardin|potag", unique(open_use$affectatio), value=T)`* based on location, regardless of buffering. 
+As a first approximation, we could classify points as inside or outside urban areas using the CORINE land cover categories ([1XX indicate human-dominated types](https://image.discomap.eea.europa.eu/arcgis/rest/services/Corine/CLC2018_WM/MapServer/legend)). To categorize tubes as coming from gardens, there are two options: 1) use the `HABITAT` descriptions as above, including all tubes with *jardin* or *potage* in the description, or 2) using the *`r grep("jardin|potag", unique(open_use$affectatio), value=T)`* category in the Vaud land use dataset. Unfortunately, there are no tubes that are categorized as *`r grep("jardin|potag", unique(open_use$affectatio), value=T)`* based on location, regardless of buffering. 
 ```{r corine_urban, echo=FALSE}
 jardin_keywords <- paste("jardin", "potag", sep="|")
 HABITAT_jardin <- unique(grep(jardin_keywords, unique(lc.df$HABITAT), value=T))
@@ -595,8 +598,9 @@ lc.df %>% st_set_geometry(NULL) %>% tabyl(HAB_jardin, corine_urban.10m) %>%
   knitr::kable(col.names=c("Garden", "Non-Urban", "Urban"), caption="Corine: 10m")
 ```
 
+
 There are too few tubes with CORINE classifications of *111 Continuous urban fabric*, which identifies parts of the few largest cities in Vaud. The *112 Discontinuous urban fabric* identifies most (but not all) towns, so the comparison of gardens between cities vs. non-cities would need to be between urban and non-urban categories.  
-![CORINE](../assets/CORINE_urban.png){width="70%"}
+![CORINE](../assets/small/CORINE_urban.png){width="70%"}
 
 Another possibility would be to categorize communes based on population (that's the smallest unit I've found).  
 ```{r map_population, echo=FALSE}
@@ -604,32 +608,35 @@ A <- ggplot(VD_raw, aes(fill=pop)) + geom_sf(size=0.1) +
   ggtitle("2019 Population") +
   scale_fill_viridis_c("") +
   theme(axis.text=element_blank(),
-        legend.position=c(0.25, 0.1), 
+        legend.position=c(0.35, 0.1), 
+        legend.background=element_blank(),
         legend.direction="horizontal", 
         legend.key.height=unit(0.2, "cm"),
         legend.key.width=unit(0.35, "cm"),
         legend.text=element_text(size=5),
-        title=element_text(size=8))
+        title=element_text(size=7))
 B <- ggplot(VD_raw, aes(fill=log(pop))) + geom_sf(size=0.1) +
   ggtitle("2019 Population (log)") +
   scale_fill_viridis_c("") +
   theme(axis.text=element_blank(),
-        legend.position=c(0.25, 0.1), 
+        legend.position=c(0.35, 0.1), 
+        legend.background=element_blank(),
         legend.direction="horizontal", 
         legend.key.height=unit(0.2, "cm"),
         legend.key.width=unit(0.35, "cm"),
         legend.text=element_text(size=5),
-        title=element_text(size=8))
+        title=element_text(size=7))
 C <- ggplot(VD_raw, aes(fill=as.numeric(popDens))) + geom_sf(size=0.1) +
   ggtitle("2019 Population Density (pop/km2)") +
   scale_fill_viridis_c("") +
   theme(axis.text=element_blank(),
-        legend.position=c(0.25, 0.1), 
+        legend.position=c(0.35, 0.1), 
+        legend.background=element_blank(),
         legend.direction="horizontal", 
         legend.key.height=unit(0.2, "cm"),
         legend.key.width=unit(0.35, "cm"),
         legend.text=element_text(size=5),
-        title=element_text(size=8))
+        title=element_text(size=7))
 ggpubr::ggarrange(A, B, C, nrow=1)
 ```
 
@@ -643,11 +650,13 @@ hist(log(as.numeric(VD_raw$popDens)), xlab="2019 log density (log(pop/km2))", ma
 ```
 
 
+----------
 
 
-## Habitat comparison to Vaud
 
-### OpFo habitats  
+# Extracted habitat comparison to Vaud
+
+## OpFo habitats  
 Using the habitat types from the structured samples, the public dataset clearly overrepresents `ZoneConstruite` and underrepresents `Autre`.  
 ```{r OpFo_props, echo=FALSE, message=FALSE, warning=F}
 full_join(lc %>% st_set_geometry(NULL) %>% group_by(Categorie) %>%
@@ -679,7 +688,7 @@ full_join(lc %>% st_set_geometry(NULL) %>% group_by(Categorie) %>%
   theme(axis.text.x=element_text(angle=270, hjust=0, vjust=0.5))
 ```
 
-### CORINE  
+## CORINE  
 Similarly with the CORINE dataset, category *112 Discontinuous urban fabric* is very overrepresented, with clear underrepresentation for *211 Non-irrigated arable land* and *312 Coniferous forest*.   
 ```{r corine_props, echo=FALSE, message=FALSE, warning=F}
 full_join(corine %>% st_set_geometry(NULL) %>% group_by(CODE_18) %>%
@@ -719,7 +728,7 @@ read_csv(paste0(gis_dir, "corine_legend.csv")) %>%
 ```
 
 
-### Detailed land use  
+## Detailed land use  
 For the land use, many crops are underrepresented, while pastures tend to be overrepresented. This is not really surprising given where people would be expected to go to collect ants.  
 ```{r landuse_props, echo=FALSE, message=FALSE, warning=F}
 full_join(open_use %>% st_set_geometry(NULL) %>% group_by(affectatio) %>%
@@ -817,15 +826,22 @@ Many samples were collected near paths, residential roads, and service roads.
 ```{r road_distances, echo=F}
 cat("Summary of distances to the nearest road (m):\n")
 summary(lc.df$road_dist)
-cat("Further than 200m:", sum(as.numeric(lc.df$road_dist)>200), "tubes", 
-    "\nFurther than 400m:", sum(as.numeric(lc.df$road_dist)>400), "tubes")
+cat("Within 10m:", sum(as.numeric(lc.df$road_dist)<10), "tubes =",
+    round(sum(as.numeric(lc.df$road_dist)<10)/nrow(lc.df)*100), "%",
+    "\nWithin 50m:", sum(as.numeric(lc.df$road_dist)<50), "tubes =",
+    round(sum(as.numeric(lc.df$road_dist)<50)/nrow(lc.df)*100), "%", 
+    "\nFurther than 200m:", sum(as.numeric(lc.df$road_dist)>200), "tubes =",
+    round(sum(as.numeric(lc.df$road_dist)>200)/nrow(lc.df)*100), "%",
+    "\nFurther than 400m:", sum(as.numeric(lc.df$road_dist)>400), "tubes =",
+    round(sum(as.numeric(lc.df$road_dist)>400)/nrow(lc.df)*100), "%")
 par(mfrow=c(1,2))
-hist(lc.df$road_dist, xlab="Distance to nearest road (m)", main="")
-hist(log(as.numeric(lc.df$road_dist)), 
+hist(lc.df$road_dist,breaks=50, col="grey30", 
+     xlab="Distance to nearest road (m)", main="")
+hist(log(as.numeric(lc.df$road_dist)), breaks=50, col="grey30",
      xlab="Log distance to nearest road (m)", main="")
 ```
 
-As should be expected, most points are quite close to a road or path. A small number are quite far from any trail in the dataset. 
+As should be expected, most points are quite close to a road or path, with `r paste0(round(sum(as.numeric(lc.df$road_dist)<10)/nrow(lc.df)*100), "%")` of samples within 10m. A small number are quite far from any trail in the dataset. 
 
 ```{r road_distances_type, echo=F, message=F, warning=F}
 ggplot(lc.df, aes(as.numeric(road_dist), y=road_nearest_type)) + 
@@ -836,4 +852,71 @@ ggplot(lc.df, aes(as.numeric(road_dist), y=road_nearest_type)) +
 
 
 ## Buildings  
-The building dataset doesn't include any usages or descriptions, but consists of building footprints across the whole canton. 
+Unlike for roads, the building dataset doesn't include any usages or descriptions, but consists of building footprints across the whole canton. 
+
+```{r bldg_distances, echo=F}
+cat("Summary of distances to the nearest building (m):\n")
+summary(lc.df$bldg_dist)
+cat("Within 10m:", sum(as.numeric(lc.df$bldg_dist)<10), "tubes =",
+    round(sum(as.numeric(lc.df$bldg_dist)<10)/nrow(lc.df)*100), "%",
+    "\nWithin 50m:", sum(as.numeric(lc.df$bldg_dist)<50), "tubes =",
+    round(sum(as.numeric(lc.df$bldg_dist)<50)/nrow(lc.df)*100), "%", 
+    "\nFurther than 200m:", sum(as.numeric(lc.df$bldg_dist)>200), "tubes =",
+    round(sum(as.numeric(lc.df$bldg_dist)>200)/nrow(lc.df)*100), "%",
+    "\nFurther than 400m:", sum(as.numeric(lc.df$bldg_dist)>400), "tubes =",
+    round(sum(as.numeric(lc.df$bldg_dist)>400)/nrow(lc.df)*100), "%")
+par(mfrow=c(1,2))
+hist(lc.df$bldg_dist, breaks=50, col="grey30",
+     xlab="Distance to nearest building (m)", main="")
+hist(log(as.numeric(lc.df$bldg_dist)), breaks=50, col="grey30",
+     xlab="Log distance to nearest building (m)", main="")
+```
+
+
+
+
+----------
+
+# Species accumulation curves  
+
+
+We could make species accumulation curves to compare across habitat types or to compare with the structured samples.  
+```{r garden_accum, echo=F, message=F, warning=F}
+garden.spp <- lc.df %>% st_set_geometry(NULL) %>% 
+  filter(HAB_jardin & !is.na(SPECIESID)) %>%
+  select(TubeNo, corine_urban.5m, SPECIESID) %>% mutate(N=1) %>%
+  pivot_wider(names_from=SPECIESID, values_from=N, values_fill=0)
+nongarden.spp <- lc.df %>% st_set_geometry(NULL) %>% 
+  filter(!HAB_jardin & !is.na(SPECIESID)) %>%
+  select(TubeNo, corine_urban.5m, SPECIESID) %>% mutate(N=1) %>%
+  pivot_wider(names_from=SPECIESID, values_from=N, values_fill=0)
+acc.ls <- list(garden_urban5m=specaccum(filter(garden.spp, corine_urban.5m) %>%
+                                          select(-TubeNo, -corine_urban.5m),
+                                        "random", 500), 
+               garden_rural5m=specaccum(filter(garden.spp, !corine_urban.5m) %>%
+                                          select(-TubeNo, -corine_urban.5m),
+                                        "random", 500),
+               nongarden_urban5m=specaccum(filter(nongarden.spp, corine_urban.5m) %>%
+                                          select(-TubeNo, -corine_urban.5m),
+                                        "random", 500), 
+               nongarden_rural5m=specaccum(filter(nongarden.spp, !corine_urban.5m) %>%
+                                          select(-TubeNo, -corine_urban.5m),
+                                        "random", 500))
+plot(acc.ls[[1]], ci.type="poly", col=rgb(166,97,26, maxColorValue=256), 
+     lwd=2, ci.lty=0, ci.col=rgb(166,97,26,150, maxColorValue=256), 
+     xlab="Tubes", ylab="Species", ylim=c(0,50), xlim=c(0, 300))
+plot(acc.ls[[3]], ci.type="poly", col=rgb(166,97,26, maxColorValue=256), lty=2,
+     lwd=2, ci.lty=0, ci.col=rgb(166,97,26,150, maxColorValue=256), add=T)
+plot(acc.ls[[2]], ci.type="poly", col=rgb(1,133,113, maxColorValue=256), 
+     lwd=2, ci.lty=0, ci.col=rgb(1,133,113,150, maxColorValue=256), add=T)
+plot(acc.ls[[4]], ci.type="poly", col=rgb(1,133,113, maxColorValue=256), lty=2,
+     lwd=2, ci.lty=0, ci.col=rgb(1,133,113,150, maxColorValue=256), add=T)
+legend("bottomright", lty=c(1,1,2,2), bty="n",
+       legend=c("Urban garden", "Non-urban garden", 
+                "Urban other", "Non-urban other"), 
+       col=c(rgb(166,97,26, maxColorValue=256), 
+             rgb(1,133,113, maxColorValue=256),
+             rgb(166,97,26, maxColorValue=256), 
+             rgb(1,133,113, maxColorValue=256)))
+
+```
