@@ -4,7 +4,7 @@
 
 # Session Data files
 .RData
-.nb.html
+*.nb.html
 
 # User-specific files
 .Ruserdata
