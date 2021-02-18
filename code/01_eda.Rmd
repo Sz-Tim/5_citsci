@@ -999,7 +999,7 @@ for(i in 2:length(acc.ls)) {
   plot(acc.ls[[i]], ci=0, col=corine_cols[i], lwd=2, add=T)
 }
 legend("bottomright", names(acc.ls), lty=1, lwd=2,
-       ol=corine_cols, bty="n", cex=0.7)
+       col=corine_cols, bty="n", cex=0.7)
 ```
 
 ## Gardens  
