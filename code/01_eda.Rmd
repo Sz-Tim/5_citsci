@@ -29,7 +29,7 @@ theme_set(theme_bw() + theme(panel.grid.minor=element_blank()));
 opfo_dir <- "~/Documents/unil/opfo_main/1_opfo/"
 gis_dir <- "~/Documents/unil/opfo_main/2_gis/data/VD_21781/"
 walk(paste0(opfo_dir, "code/", c("lc_cols", "00_fn"), ".R"), source)
-source("../code/00_fn")
+source("../code/00_fn.R")
 buffer_col <- c('10m'="#b15928", '5m'="#1f78b4", "Point"="grey30", "Vaud"="#238443")
 
 # GIS data
