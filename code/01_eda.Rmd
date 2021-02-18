@@ -29,6 +29,7 @@ theme_set(theme_bw() + theme(panel.grid.minor=element_blank()));
 opfo_dir <- "~/Documents/unil/opfo_main/1_opfo/"
 gis_dir <- "~/Documents/unil/opfo_main/2_gis/data/VD_21781/"
 walk(paste0(opfo_dir, "code/", c("lc_cols", "00_fn"), ".R"), source)
+source("../code/00_fn")
 buffer_col <- c('10m'="#b15928", '5m'="#1f78b4", "Point"="grey30", "Vaud"="#238443")
 
 # GIS data
@@ -190,84 +191,75 @@ CORINE is often used in the literature, but it probably is not very helpful for 
 ## Habitat extraction: Points and buffers  
 Using the same habitat categories as the structured samples (first column of plots above), we can calculate the habitat for each tube as the point location, the dominant habitat within 5m, and the dominant habitat within 10m.
 ```{r habitat_calc, eval=FALSE, message=FALSE, warning=FALSE, include=FALSE}
-lc_pt.join <- st_join(pub_filt, lc)
-lc_5m.join <- st_join(pub.5m, lc)
-lc_10m.join <- st_join(pub.10m, lc)
-st_write(lc_pt.join %>% select(-SWISSCOORDINATE_X, -SWISSCOORDINATE_Y,
-                               -LONGITUDE, -LATITUDE), 
-         paste0(gis_dir, "opfo_public_lc_pts.shp"))
-st_write(lc_5m.join %>% select(-SWISSCOORDINATE_X, -SWISSCOORDINATE_Y,
-                               -LONGITUDE, -LATITUDE), 
+if(any(!st_is_valid(lc))) lc <- st_make_valid(lc)
+
+lc_pt.join <- st_join(pub_filt %>% select(TubeNo), 
+                      lc %>% select(Categorie)) %>% 
+  group_by(TubeNo) %>% slice_head(n=1)
+lc_5m.intsct <- st_intersection(pub.5m %>% select(TubeNo), 
+                                lc %>% select(Categorie)) %>% 
+  mutate(area=st_area(.)) %>% group_by(TubeNo) %>%
+  mutate(prop=as.numeric(area/sum(area)))
+lc_10m.intsct <- st_intersection(pub.10m %>% select(TubeNo), 
+                                 lc %>% select(Categorie)) %>% 
+  mutate(area=st_area(.)) %>% group_by(TubeNo) %>%
+  mutate(prop=as.numeric(area/sum(area)))
+st_write(lc_pt.join, paste0(gis_dir, "opfo_public_lc_pts.shp"))
+st_write(st_collection_extract(lc_5m.intsct %>% ungroup, "POLYGON"), 
          paste0(gis_dir, "opfo_public_lc_5m.shp"))
-st_write(lc_10m.join %>% select(-SWISSCOORDINATE_X, -SWISSCOORDINATE_Y,
-                               -LONGITUDE, -LATITUDE), 
+st_write(st_collection_extract(lc_10m.intsct %>% ungroup, "POLYGON"), 
          paste0(gis_dir, "opfo_public_lc_10m.shp"))
-# ESRI format truncates column names
-saveRDS(names(lc_pt.join %>% 
-                select(-SWISSCOORDINATE_X, -SWISSCOORDINATE_Y,
-                       -LONGITUDE, -LATITUDE)),
-        paste0(gis_dir, "opfo_public_lc_NAMES.rds"))
 ```
 ```{r habitat_load, echo=F, results='hide', message=F}
-# Run spatial join one time only because of processing time
-# Loading results of st_join(., lc)
-lc_pt.join <- st_read(paste0(gis_dir, "opfo_public_lc_pts.shp")) %>%
-  setNames(readRDS(paste0(gis_dir, "opfo_public_lc_NAMES.rds")))
-lc_5m.join <- st_read(paste0(gis_dir, "opfo_public_lc_5m.shp")) %>%
-  setNames(readRDS(paste0(gis_dir, "opfo_public_lc_NAMES.rds")))
-lc_10m.join <- st_read(paste0(gis_dir, "opfo_public_lc_10m.shp")) %>%
-  setNames(readRDS(paste0(gis_dir, "opfo_public_lc_NAMES.rds")))
+# Run above operations one time only because of processing time
+lc_pt.join <- st_read(paste0(gis_dir, "opfo_public_lc_pts.shp"))
+lc_5m.intsct <- st_read(paste0(gis_dir, "opfo_public_lc_5m.shp"))
+lc_10m.intsct<- st_read(paste0(gis_dir, "opfo_public_lc_10m.shp"))
+corine_pt.join <- st_join(pub_filt %>% select(TubeNo), 
+                      corine %>% select(CODE_18))
+corine_5m.intsct <- intersect_with_composition(pub.5m, corine, "CODE_18")
+corine_10m.intsct <- intersect_with_composition(pub.10m, corine, "CODE_18")
+open_use_pt.join <- st_join(pub_filt %>% select(TubeNo), 
+                          open_use %>% select(affectatio))
+open_use_5m.intsct <- intersect_with_composition(pub.5m, open_use, "affectatio")
+open_use_10m.intsct <- intersect_with_composition(pub.10m, open_use, "affectatio")
+
 ```
 
 We can assign the habitat type for each tube as either the habitat at the point location, ignoring uncertainty, or the dominant habitat within the 5m or 10m buffer. Larger buffers will obviously include more habitat categories, and samples collected along roads or edges would most likely be mis-categorized since those habitat types are unlikely to have the greatest coverage within a 5m or 10m radius. Conversely, even slight inaccuracies in the coordinates would result in mis-categorization of these samples based on the point locations. Assigning a habitat to each point with any degree of confidence is not trivial. 
 ```{r habitat_buffers, echo=FALSE, message=FALSE, warning=FALSE}
-lc.df <- pub_filt %>% arrange(TubeNo) %>%
-  mutate(lc.pt=(lc_pt.join %>% mutate(area_j=st_area(.)) %>%
-                  arrange(TubeNo, desc(area_j)) %>% 
-                  group_by(TubeNo) %>%
-                  summarise(Cat=first(Categorie)))$Cat,
-         lc.5m=(lc_5m.join %>% mutate(area_j=st_area(.)) %>%
-                  arrange(TubeNo, desc(area_j)) %>% 
-                  group_by(TubeNo) %>%
-                  summarise(Cat=first(Categorie)))$Cat,
-         lc.10m=(lc_10m.join %>% mutate(area_j=st_area(.)) %>%
-                  arrange(TubeNo, desc(area_j)) %>% 
-                  group_by(TubeNo) %>%
-                  summarise(Cat=first(Categorie)))$Cat,
-         n_lc.5m=(lc_5m.join %>% arrange(TubeNo) %>% group_by(TubeNo) %>%
-                    summarise(N=n_distinct(Categorie)))$N,
-         n_lc.10m=(lc_10m.join %>% arrange(TubeNo) %>% group_by(TubeNo) %>%
-                     summarise(N=n_distinct(Categorie)))$N,
-         corine.pt=st_join(., corine)$CODE_18,
-         corine.5m=st_join(pub.5m %>% arrange(TubeNo), 
-                           corine, largest=T)$CODE_18,
-         corine.10m=st_join(pub.10m %>% arrange(TubeNo), 
-                            corine, largest=T)$CODE_18,
-         n_corine.5m=(st_join(pub.5m, corine) %>% arrange(TubeNo) %>% 
-                        group_by(TubeNo) %>% summarise(N=n_distinct(CODE_18)))$N,
-         n_corine.10m=(st_join(pub.10m, corine) %>% arrange(TubeNo) %>% 
-                         group_by(TubeNo) %>% summarise(N=n_distinct(CODE_18)))$N,
-         open_use.pt=st_join(., open_use)$affectatio,
-         open_use.5m=st_join(pub.5m %>% arrange(TubeNo), 
-                             open_use, largest=T)$affectatio,
-         open_use.10m=st_join(pub.10m %>% arrange(TubeNo), 
-                              open_use, largest=T)$affectatio,
-         n_open_use.5m=(st_join(pub.5m, open_use) %>% arrange(TubeNo) %>% 
-           group_by(TubeNo) %>% summarise(N=n_distinct(affectatio)))$N,
-         n_open_use.10m=(st_join(pub.10m, open_use) %>% arrange(TubeNo) %>% 
-           group_by(TubeNo) %>% summarise(N=n_distinct(affectatio)))$N) %>%
-  mutate(across(contains("lc"), as.character)) %>%
-  mutate(across(contains("corine"), as.character)) %>%
-  mutate(across(contains("open_use"), as.character))
+lc.df <- pub_filt %>%
+  # Opfo habitats: categorization, max proportional cover, number of types
+  full_join(., lc_pt.join %>% st_set_geometry(NULL) %>% 
+              rename(cat_opfo.pt=Categorie), 
+            by="TubeNo") %>%
+  full_join(., categorize_buffers(lc_5m.intsct, "Categorie", "opfo.5m"),
+            by="TubeNo") %>%
+  full_join(., categorize_buffers(lc_10m.intsct, "Categorie", "opfo.10m"),
+            by="TubeNo") %>%
+  # CORINE habitats: categorization, max proportional cover, number of types
+  full_join(., corine_pt.join %>% st_set_geometry(NULL) %>% 
+              rename(cat_corine.pt=CODE_18), 
+            by="TubeNo") %>%
+  full_join(., categorize_buffers(corine_5m.intsct, "CODE_18", "corine.5m"),
+            by="TubeNo") %>%
+  full_join(., categorize_buffers(corine_10m.intsct, "CODE_18", "corine.10m"),
+            by="TubeNo") %>%
+  # Land uses: categorization, max proportional cover, number of types
+  full_join(., open_use_pt.join %>% st_set_geometry(NULL) %>% 
+              rename(cat_open_use.pt=affectatio), 
+            by="TubeNo") %>%
+  full_join(., categorize_buffers(open_use_5m.intsct, "affectatio", "open_use.5m"),
+            by="TubeNo") %>%
+  full_join(., categorize_buffers(open_use_10m.intsct, "affectatio", "open_use.10m"),
+            by="TubeNo") %>%
+  mutate(across(starts_with("cat_"), as.character))
 ```
 ```{r habitat_buffers_plots, echo=FALSE, message=FALSE, warning=FALSE}
-cat.cols <- expand_grid(A=c("corine.", "lc.", "open_use."),
-                        B=c("pt", "5m", "10m")) %>% 
-  mutate(C=paste0(A, B))
 lc.df %>% st_set_geometry(NULL) %>% 
-  select(TubeNo, cat.cols$C) %>% 
-  pivot_longer(cat.cols$C, names_to="Est", values_to="Cat") %>%
-  mutate(Dataset=str_split_fixed(Est, "\\.", 2)[,1], 
+  select(TubeNo, starts_with("cat_")) %>% 
+  pivot_longer(starts_with("cat_"), names_to="Est", values_to="Cat") %>%
+  mutate(Dataset=str_split_fixed(str_sub(Est, 5, -1), "\\.", 2)[,1], 
          Buffer=str_split_fixed(Est, "\\.", 2)[,2]) %>% select(-Est) %>%
   pivot_wider(names_from="Buffer", values_from="Cat") %>% 
   mutate('Point vs. 5m'=pt==`5m`,
@@ -275,7 +267,7 @@ lc.df %>% st_set_geometry(NULL) %>%
          '5m vs. 10m'=`5m`==`10m`) %>%
   select(Dataset, contains("vs.")) %>% 
   pivot_longer(2:4, names_to="Comparison", values_to="Matching") %>%
-  mutate(Dataset=factor(Dataset, levels=c("lc", "corine", "open_use"),
+  mutate(Dataset=factor(Dataset, levels=c("opfo", "corine", "open_use"),
                         labels=c("OpFo", "CORINE", "VD Landuse"))) %>%
   filter(!is.na(Matching)) %>%
   ggplot(aes(Comparison, fill=Matching)) + facet_grid(.~Dataset) +
@@ -284,14 +276,15 @@ lc.df %>% st_set_geometry(NULL) %>%
   scale_y_continuous(labels=scales::percent_format()) + 
   scale_fill_manual(values=c("gray", "#006d2c")) +
   labs(x="", y="Percent of tubes",
-       title="Buffers show most difference with points in OpFo") +
+       title="Buffers show most difference with points in OpFo (~11%)") +
   theme(axis.text.x=element_text(angle=270, hjust=0, vjust=0.5))
 lc.df %>% st_set_geometry(NULL) %>% 
   select(starts_with("n_")) %>% 
   pivot_longer(everything(), names_to="Est", values_to="N") %>%
-  mutate(Dataset=str_remove(str_split_fixed(Est, "\\.", 2)[,1], "n_"), 
+  filter(!is.na(N)) %>%
+  mutate(Dataset=str_split_fixed(str_sub(Est, 3, -1), "\\.", 2)[,1], 
          Buffer=str_split_fixed(Est, "\\.", 2)[,2]) %>% select(-Est) %>%
-  mutate(Dataset=factor(Dataset, levels=c("lc", "corine", "open_use"),
+  mutate(Dataset=factor(Dataset, levels=c("opfo", "corine", "open_use"),
                         labels=c("OpFo", "CORINE", "VD Landuse"))) %>%
   group_by(Dataset, Buffer, N) %>% summarise(tubes=n()) %>%
   group_by(Dataset, Buffer) %>% mutate(prop=tubes/sum(tubes)) %>%
@@ -302,6 +295,21 @@ lc.df %>% st_set_geometry(NULL) %>%
   scale_fill_manual(values=buffer_col) +
   labs(x="Number of habitats", y="Percent of tubes", 
        title="Most OpFo buffers include multiple habitats")
+lc.df %>% st_set_geometry(NULL) %>%
+  select(starts_with("prLargest_")) %>% 
+  pivot_longer(everything(), names_to="Est", values_to="prLargest") %>%
+  filter(!is.na(prLargest)) %>%
+  mutate(Dataset=str_split_fixed(str_sub(Est, 11, -1), "\\.", 2)[,1], 
+         Buffer=str_split_fixed(Est, "\\.", 2)[,2]) %>% select(-Est) %>%
+  mutate(Dataset=factor(Dataset, levels=c("opfo", "corine", "open_use"),
+                        labels=c("OpFo", "CORINE", "VD Landuse"))) %>%
+  ggplot(aes(prLargest, fill=Buffer)) + 
+  facet_wrap(~Dataset, nrow=1, scales="free_y") + 
+  geom_hline(yintercept=0, size=0.3, colour="grey30") +
+  geom_density(size=0.3, alpha=0.7, colour="grey30") +
+  scale_x_continuous(labels=scales::percent_format(), limits=c(0,1)) + 
+  scale_fill_manual(values=buffer_col) +
+  labs(x="Percent coverage of dominant category", y="Density")
 ```
 
 
@@ -332,21 +340,21 @@ HABITAT_foret <- grep('[f,F]or.t', unique(lc.df$HABITAT), value=T) %>%
 # Forest habitat categorizations
 foret.df <- full_join(filter(lc.df, HABITAT %in% HABITAT_foret) %>% 
                         st_set_geometry(NULL) %>%
-                        tabyl(lc.pt) %>% adorn_pct_formatting() %>%
-                        select(lc.pt, n, percent) %>% 
-                        rename(Categorie=lc.pt, n_pt=n, pct_pt=percent),
+                        tabyl(cat_opfo.pt) %>% adorn_pct_formatting() %>%
+                        select(cat_opfo.pt, n, percent) %>% 
+                        rename(Categorie=cat_opfo.pt, n_pt=n, pct_pt=percent),
                       filter(lc.df, HABITAT %in% HABITAT_foret) %>% 
                         st_set_geometry(NULL) %>%
-                        tabyl(lc.5m) %>% adorn_pct_formatting() %>%
-                        select(lc.5m, n, percent) %>% 
-                        rename(Categorie=lc.5m, n_5m=n, pct_5m=percent),
+                        tabyl(cat_opfo.5m) %>% adorn_pct_formatting() %>%
+                        select(cat_opfo.5m, n, percent) %>% 
+                        rename(Categorie=cat_opfo.5m, n_5m=n, pct_5m=percent),
                       by="Categorie") %>%
   full_join(., 
             filter(lc.df, HABITAT %in% HABITAT_foret) %>% 
               st_set_geometry(NULL) %>%
-              tabyl(lc.10m) %>% adorn_pct_formatting() %>%
-              select(lc.10m, n, percent) %>% 
-              rename(Categorie=lc.10m, n_10m=n, pct_10m=percent), 
+              tabyl(cat_opfo.10m) %>% adorn_pct_formatting() %>%
+              select(cat_opfo.10m, n, percent) %>% 
+              rename(Categorie=cat_opfo.10m, n_10m=n, pct_10m=percent), 
             by="Categorie") %>%
   select(Categorie, contains("n_"), contains("pct_"))
 knitr::kable(foret.df, 
@@ -360,12 +368,12 @@ foret.df %>% select(Categorie, contains("n_")) %>%
   scale_y_continuous(labels=scales::percent_format()) + 
   scale_fill_manual(values=buffer_col) +
   labs(x="", y="Percent", 
-       title="Forest categorization works best with 5m buffer",
-       subtitle="But 25.3% of 'forest' tubes are not forest by 5m location") +
+       title="Forest categorization works best with 10m buffer",
+       subtitle="But 30.7% of 'forest' tubes are not forest by 10m location") +
   theme(axis.text.x=element_text(angle=270, hjust=0, vjust=0.5))
 ```
 
-The 10m buffer ends up including a lot more `Autre`, indicating that those points are near the forest edge even if they aren't specified as such. The high proportion of point locations classified as `transport` could reflect that the ants were collected along a road in the forest, or that the coordinates were recorded after returning to the car.
+The high proportion of point locations and 5m buffers classified as `transport` could reflect that the ants were collected along a road in the forest, or that the coordinates were recorded after returning to the car.
 
 
 ### Lisière  
@@ -381,21 +389,21 @@ HABITAT_edge <- unique(grep('lisi.re', unique(lc.df$HABITAT), value=T))
 # Edge habitat categorizations
 edge.df <- full_join(filter(lc.df, HABITAT %in% HABITAT_edge) %>% 
                         st_set_geometry(NULL) %>%
-                        tabyl(lc.pt) %>% adorn_pct_formatting() %>%
-                        select(lc.pt, n, percent) %>% 
-                        rename(Categorie=lc.pt, n_pt=n, pct_pt=percent),
+                        tabyl(cat_opfo.pt) %>% adorn_pct_formatting() %>%
+                        select(cat_opfo.pt, n, percent) %>% 
+                        rename(Categorie=cat_opfo.pt, n_pt=n, pct_pt=percent),
                       filter(lc.df, HABITAT %in% HABITAT_edge) %>% 
                         st_set_geometry(NULL) %>%
-                        tabyl(lc.5m) %>% adorn_pct_formatting() %>%
-                        select(lc.5m, n, percent) %>% 
-                        rename(Categorie=lc.5m, n_5m=n, pct_5m=percent),
+                        tabyl(cat_opfo.5m) %>% adorn_pct_formatting() %>%
+                        select(cat_opfo.5m, n, percent) %>% 
+                        rename(Categorie=cat_opfo.5m, n_5m=n, pct_5m=percent),
                       by="Categorie") %>%
   full_join(., 
             filter(lc.df, HABITAT %in% HABITAT_edge) %>% 
               st_set_geometry(NULL) %>%
-              tabyl(lc.10m) %>% adorn_pct_formatting() %>%
-              select(lc.10m, n, percent) %>% 
-              rename(Categorie=lc.10m, n_10m=n, pct_10m=percent), 
+              tabyl(cat_opfo.10m) %>% adorn_pct_formatting() %>%
+              select(cat_opfo.10m, n, percent) %>% 
+              rename(Categorie=cat_opfo.10m, n_10m=n, pct_10m=percent), 
             by="Categorie") %>%
   select(Categorie, contains("n_"), contains("pct_"))
 knitr::kable(edge.df, 
@@ -413,7 +421,7 @@ edge.df %>% select(Categorie, contains("n_")) %>%
   theme(axis.text.x=element_text(angle=270, hjust=0, vjust=0.5))
 ```
 
-As expected, the point locations capture `lisière` best, but it is still only 16% of the tubes with *lisi.re* in the `HABITAT` description. 
+The point locations and 5m buffer capture `lisière` about equally, but it is still only 17% of the tubes with *lisi.re* in the `HABITAT` description. 
 
 
 ### Roads  
@@ -430,21 +438,21 @@ HABITAT_road <- unique(grep('rue($| )|route', unique(lc.df$HABITAT), value=T))
 # Edge habitat categorizations
 road.df <- full_join(filter(lc.df, HABITAT %in% HABITAT_road) %>% 
                         st_set_geometry(NULL) %>%
-                        tabyl(lc.pt) %>% adorn_pct_formatting() %>%
-                        select(lc.pt, n, percent) %>% 
-                        rename(Categorie=lc.pt, n_pt=n, pct_pt=percent),
+                        tabyl(cat_opfo.pt) %>% adorn_pct_formatting() %>%
+                        select(cat_opfo.pt, n, percent) %>% 
+                        rename(Categorie=cat_opfo.pt, n_pt=n, pct_pt=percent),
                       filter(lc.df, HABITAT %in% HABITAT_road) %>% 
                         st_set_geometry(NULL) %>%
-                        tabyl(lc.5m) %>% adorn_pct_formatting() %>%
-                        select(lc.5m, n, percent) %>% 
-                        rename(Categorie=lc.5m, n_5m=n, pct_5m=percent),
+                        tabyl(cat_opfo.5m) %>% adorn_pct_formatting() %>%
+                        select(cat_opfo.5m, n, percent) %>% 
+                        rename(Categorie=cat_opfo.5m, n_5m=n, pct_5m=percent),
                       by="Categorie") %>%
   full_join(., 
             filter(lc.df, HABITAT %in% HABITAT_road) %>% 
               st_set_geometry(NULL) %>%
-              tabyl(lc.10m) %>% adorn_pct_formatting() %>%
-              select(lc.10m, n, percent) %>% 
-              rename(Categorie=lc.10m, n_10m=n, pct_10m=percent), 
+              tabyl(cat_opfo.10m) %>% adorn_pct_formatting() %>%
+              select(cat_opfo.10m, n, percent) %>% 
+              rename(Categorie=cat_opfo.10m, n_10m=n, pct_10m=percent), 
             by="Categorie") %>%
   select(Categorie, contains("n_"), contains("pct_"))
 knitr::kable(road.df, 
@@ -458,11 +466,11 @@ road.df %>% select(Categorie, contains("n_")) %>%
   scale_y_continuous(labels=scales::percent_format()) + 
   scale_fill_manual(values=buffer_col) +
   labs(x="", y="Percent", 
-       title="35.2% of 'road' tubes are transport based on point location") +
+       title="36.2% of 'road' tubes are transport based on 5m buffer") +
   theme(axis.text.x=element_text(angle=270, hjust=0, vjust=0.5))
 ```
 
-More tubes with `HABITAT` descriptions including *rue* and *route* are classified as `transport` based on point locations, but it is still only about a third. Using the buffers, they are all categorized as the surrounding (non-road) habitats.  
+More tubes with `HABITAT` descriptions including *rue* and *route* are classified as `transport` than any other category based on 5m locations, but it is still only about a third. Surprisingly, there is not much difference between the point locations and the buffers.  
 
 
 ### Zone Construite  
@@ -470,7 +478,7 @@ The `ZoneConstruite` category should also be unambiguous.
 ```{r habitat_entries_ZC, echo=F, warning=F, message=F}
 # This should be as good of a match as is possible
 ZC_keywords <- paste("maison", "appartement", "étage", "balcon", "cuisine", sep="|")
-cat("ZC keywords:", ZC_keywords)
+cat("ZC keywords:", ZC_keywords, "\n")
 cat("Descriptions with keywords:", sum(grepl(ZC_keywords, lc.df$HABITAT)))
 tabyl(grep(ZC_keywords, lc.df$HABITAT, value=T)) %>% select(1,2) %>% 
   setNames(c("ZC HABITAT", "count")) %>% as_tibble %>%
@@ -481,21 +489,21 @@ HABITAT_ZC <- unique(grep(ZC_keywords, unique(lc.df$HABITAT), value=T))
 # ZC habitat categorizations
 ZC.df <- full_join(filter(lc.df, HABITAT %in% HABITAT_ZC) %>% 
                         st_set_geometry(NULL) %>%
-                        tabyl(lc.pt) %>% adorn_pct_formatting() %>%
-                        select(lc.pt, n, percent) %>% 
-                        rename(Categorie=lc.pt, n_pt=n, pct_pt=percent),
+                        tabyl(cat_opfo.pt) %>% adorn_pct_formatting() %>%
+                        select(cat_opfo.pt, n, percent) %>% 
+                        rename(Categorie=cat_opfo.pt, n_pt=n, pct_pt=percent),
                       filter(lc.df, HABITAT %in% HABITAT_ZC) %>% 
                         st_set_geometry(NULL) %>%
-                        tabyl(lc.5m) %>% adorn_pct_formatting() %>%
-                        select(lc.5m, n, percent) %>% 
-                        rename(Categorie=lc.5m, n_5m=n, pct_5m=percent),
+                        tabyl(cat_opfo.5m) %>% adorn_pct_formatting() %>%
+                        select(cat_opfo.5m, n, percent) %>% 
+                        rename(Categorie=cat_opfo.5m, n_5m=n, pct_5m=percent),
                       by="Categorie") %>%
   full_join(., 
             filter(lc.df, HABITAT %in% HABITAT_ZC) %>% 
               st_set_geometry(NULL) %>%
-              tabyl(lc.10m) %>% adorn_pct_formatting() %>%
-              select(lc.10m, n, percent) %>% 
-              rename(Categorie=lc.10m, n_10m=n, pct_10m=percent), 
+              tabyl(cat_opfo.10m) %>% adorn_pct_formatting() %>%
+              select(cat_opfo.10m, n, percent) %>% 
+              rename(Categorie=cat_opfo.10m, n_10m=n, pct_10m=percent), 
             by="Categorie") %>%
   select(Categorie, contains("n_"), contains("pct_"))
 knitr::kable(ZC.df, 
@@ -509,11 +517,74 @@ ZC.df %>% select(Categorie, contains("n_")) %>%
   scale_y_continuous(labels=scales::percent_format()) + 
   scale_fill_manual(values=buffer_col) +
   labs(x="", y="Percent", 
-       title="80-90% of 'ZC' tubes are ZC based on location") +
+       title="80% of 'ZC' tubes are ZC based on location") +
   theme(axis.text.x=element_text(angle=270, hjust=0, vjust=0.5))
 ```
 
-Generally good correspondence, with perhaps slightly better matching using the 5m buffer: 90.2% instead of 82.1% (points) or 85.4% (10m buffer). 
+Generally good correspondence, with minimal differences among buffers. 
+
+
+
+### Pastures  
+Samples collected in pastures should be classified pretty reliably as `Autre` or `PrairieSeche`. The table and figure exclude `HABITAT` descriptions that contain `lisi*re`.  
+```{r habitat_entries_pasture, echo=F, warning=F, message=F}
+cat("Descriptions with p*turage:", sum(grepl('p.turage', lc.df$HABITAT)))
+tabyl(grep('p.turage', lc.df$HABITAT, value=T)) %>% select(1,2) %>% 
+  setNames(c("Pasture HABITAT", "count")) %>% as_tibble %>%
+  mutate(`Pasture HABITAT`=str_sub(`Pasture HABITAT`, 1, 60))
+
+
+# HABITAT including p*turage
+HABITAT_paturage <- unique(grep('p.turage', unique(lc.df$HABITAT), value=T) )%>%
+  grep('lisi.re', ., value=T, invert=T)
+landuse_paturage <- grep("[p,P].turage", unique(open_use$affectatio), value=T)
+
+lc.df <- lc.df %>% mutate(HAB_paturage=HABITAT %in% HABITAT_paturage,
+                          use_paturage.pt=cat_open_use.pt %in% landuse_paturage,
+                          use_paturage.5m=cat_open_use.5m %in% landuse_paturage,
+                          use_paturage.10m=cat_open_use.10m %in% landuse_paturage)
+# Pasture habitat categorizations
+pasture.df <- full_join(filter(lc.df, HABITAT %in% HABITAT_paturage) %>% 
+                        st_set_geometry(NULL) %>%
+                        tabyl(cat_opfo.pt) %>% adorn_pct_formatting() %>%
+                        select(cat_opfo.pt, n, percent) %>% 
+                        rename(Categorie=cat_opfo.pt, n_pt=n, pct_pt=percent),
+                      filter(lc.df, HABITAT %in% HABITAT_paturage) %>% 
+                        st_set_geometry(NULL) %>%
+                        tabyl(cat_opfo.5m) %>% adorn_pct_formatting() %>%
+                        select(cat_opfo.5m, n, percent) %>% 
+                        rename(Categorie=cat_opfo.5m, n_5m=n, pct_5m=percent),
+                      by="Categorie") %>%
+  full_join(., 
+            filter(lc.df, HABITAT %in% HABITAT_paturage) %>% 
+              st_set_geometry(NULL) %>%
+              tabyl(cat_opfo.10m) %>% adorn_pct_formatting() %>%
+              select(cat_opfo.10m, n, percent) %>% 
+              rename(Categorie=cat_opfo.10m, n_10m=n, pct_10m=percent), 
+            by="Categorie") %>%
+  select(Categorie, contains("n_"), contains("pct_"))
+knitr::kable(pasture.df, 
+             caption="Habitat extractions for tubes with HABITAT entries containing p*turage")
+pasture.df %>% select(Categorie, contains("n_")) %>% 
+  rename(Point=n_pt, `5m`=n_5m, `10m`=n_10m) %>%
+  adorn_percentages(denominator="col") %>%
+  pivot_longer(2:4, names_to="Buffer", values_to="Prop") %>%
+  ggplot(aes(Categorie, Prop, fill=Buffer)) + 
+  geom_bar(position="dodge", stat="identity", colour="grey30", size=0.3) +
+  scale_y_continuous(labels=scales::percent_format()) + 
+  scale_fill_manual(values=buffer_col) +
+  labs(x="", y="Percent", 
+       title="70-77% of 'pasture' tubes are Autre or Prairie Sèche ") +
+  theme(axis.text.x=element_text(angle=270, hjust=0, vjust=0.5))
+```
+
+Tubes collected in pastures based on `HABITAT` description are distributed across only 6 types of extracted land cover, with most aligning with `Autre`. Sizable numbers mapped to `lisière` or `transport`, despite removing descriptions containing the word `lisi*re`.  
+
+
+
+
+----------
+
 
 
 
@@ -533,21 +604,21 @@ HABITAT_jardin <- unique(grep(jardin_keywords, unique(lc.df$HABITAT), value=T))
 # jardin habitat categorizations
 jardin.df <- full_join(filter(lc.df, HABITAT %in% HABITAT_jardin) %>% 
                         st_set_geometry(NULL) %>%
-                        tabyl(lc.pt) %>% adorn_pct_formatting() %>%
-                        select(lc.pt, n, percent) %>% 
-                        rename(Categorie=lc.pt, n_pt=n, pct_pt=percent),
+                        tabyl(cat_opfo.pt) %>% adorn_pct_formatting() %>%
+                        select(cat_opfo.pt, n, percent) %>% 
+                        rename(Categorie=cat_opfo.pt, n_pt=n, pct_pt=percent),
                       filter(lc.df, HABITAT %in% HABITAT_jardin) %>% 
                         st_set_geometry(NULL) %>%
-                        tabyl(lc.5m) %>% adorn_pct_formatting() %>%
-                        select(lc.5m, n, percent) %>% 
-                        rename(Categorie=lc.5m, n_5m=n, pct_5m=percent),
+                        tabyl(cat_opfo.5m) %>% adorn_pct_formatting() %>%
+                        select(cat_opfo.5m, n, percent) %>% 
+                        rename(Categorie=cat_opfo.5m, n_5m=n, pct_5m=percent),
                       by="Categorie") %>%
   full_join(., 
             filter(lc.df, HABITAT %in% HABITAT_jardin) %>% 
               st_set_geometry(NULL) %>%
-              tabyl(lc.10m) %>% adorn_pct_formatting() %>%
-              select(lc.10m, n, percent) %>% 
-              rename(Categorie=lc.10m, n_10m=n, pct_10m=percent), 
+              tabyl(cat_opfo.10m) %>% adorn_pct_formatting() %>%
+              select(cat_opfo.10m, n, percent) %>% 
+              rename(Categorie=cat_opfo.10m, n_10m=n, pct_10m=percent), 
             by="Categorie") %>%
   select(Categorie, contains("n_"), contains("pct_"))
 knitr::kable(jardin.df, 
@@ -561,7 +632,7 @@ jardin.df %>% select(Categorie, contains("n_")) %>%
   scale_y_continuous(labels=scales::percent_format()) + 
   scale_fill_manual(values=buffer_col) +
   labs(x="", y="Percent", 
-       title="82-95% of 'jardin' tubes are ZC/Autre/CP based on location") +
+       title="82-88% of 'jardin' tubes are ZC/Autre/CP based on location") +
   theme(axis.text.x=element_text(angle=270, hjust=0, vjust=0.5))
 ```
 
@@ -579,15 +650,15 @@ HABITAT_jardin <- unique(grep(jardin_keywords, unique(lc.df$HABITAT), value=T))
 landuse_jardin <- grep(jardin_keywords, unique(open_use$affectatio), value=T)
 
 lc.df <- lc.df %>% mutate(HAB_jardin=HABITAT %in% HABITAT_jardin,
-                          use_jardin.pt=open_use.pt %in% landuse_jardin,
-                          use_jardin.5m=open_use.5m %in% landuse_jardin,
-                          use_jardin.10m=open_use.10m %in% landuse_jardin,
-                          corine_urban.pt=grepl("^1", corine.pt),
-                          corine_urban.5m=grepl("^1", corine.5m),
-                          corine_urban.10m=grepl("^1", corine.10m),
-                          corine_urbanCont.pt=grepl("111", corine.pt),
-                          corine_urbanCont.5m=grepl("111", corine.5m),
-                          corine_urbanCont.10m=grepl("111", corine.10m))
+                          use_jardin.pt=cat_open_use.pt %in% landuse_jardin,
+                          use_jardin.5m=cat_open_use.5m %in% landuse_jardin,
+                          use_jardin.10m=cat_open_use.10m %in% landuse_jardin,
+                          corine_urban.pt=grepl("^1", cat_corine.pt),
+                          corine_urban.5m=grepl("^1", cat_corine.5m),
+                          corine_urban.10m=grepl("^1", cat_corine.10m),
+                          corine_urbanCont.pt=grepl("111", cat_corine.pt),
+                          corine_urbanCont.5m=grepl("111", cat_corine.5m),
+                          corine_urbanCont.10m=grepl("111", cat_corine.10m))
 
 # jardin HABITAT descriptions by corine category
 lc.df %>% st_set_geometry(NULL) %>% tabyl(HAB_jardin, corine_urban.pt) %>%
@@ -663,19 +734,19 @@ full_join(lc %>% st_set_geometry(NULL) %>% group_by(Categorie) %>%
             summarise(Area=sum(area)) %>% ungroup %>%
             mutate(Vaud=as.numeric(Area/sum(Area))) %>%
             select(Categorie, Vaud),
-          lc.df %>% st_set_geometry(NULL) %>% group_by(lc.pt) %>%
+          lc.df %>% st_set_geometry(NULL) %>% group_by(cat_opfo.pt) %>%
             summarise(N=n()) %>% ungroup %>%
-            rename(Categorie=lc.pt) %>%
+            rename(Categorie=cat_opfo.pt) %>%
             mutate(Point=N/sum(N)) %>% select(Categorie, Point), 
           by="Categorie") %>%
-  full_join(., lc.df %>% st_set_geometry(NULL) %>% group_by(lc.5m) %>%
+  full_join(., lc.df %>% st_set_geometry(NULL) %>% group_by(cat_opfo.5m) %>%
             summarise(N=n()) %>% ungroup %>%
-            rename(Categorie=lc.5m) %>%
+            rename(Categorie=cat_opfo.5m) %>%
             mutate(`5m`=N/sum(N)) %>% select(Categorie, `5m`),
             by="Categorie") %>%
-  full_join(., lc.df %>% st_set_geometry(NULL) %>% group_by(lc.10m) %>%
+  full_join(., lc.df %>% st_set_geometry(NULL) %>% group_by(cat_opfo.10m) %>%
             summarise(N=n()) %>% ungroup %>%
-            rename(Categorie=lc.10m) %>%
+            rename(Categorie=cat_opfo.10m) %>%
             mutate(`10m`=N/sum(N)) %>% select(Categorie, `10m`),
             by="Categorie") %>%
   filter(!is.na(Categorie)) %>%
@@ -695,19 +766,19 @@ full_join(corine %>% st_set_geometry(NULL) %>% group_by(CODE_18) %>%
             summarise(Area=sum(area)) %>% ungroup %>%
             mutate(Vaud=as.numeric(Area/sum(Area))) %>%
             select(CODE_18, Vaud),
-          lc.df %>% st_set_geometry(NULL) %>% group_by(corine.pt) %>%
+          lc.df %>% st_set_geometry(NULL) %>% group_by(cat_corine.pt) %>%
             summarise(N=n()) %>% ungroup %>%
-            rename(CODE_18=corine.pt) %>%
+            rename(CODE_18=cat_corine.pt) %>%
             mutate(Point=N/sum(N)) %>% select(CODE_18, Point), 
           by="CODE_18") %>%
-  full_join(., lc.df %>% st_set_geometry(NULL) %>% group_by(corine.5m) %>%
+  full_join(., lc.df %>% st_set_geometry(NULL) %>% group_by(cat_corine.5m) %>%
             summarise(N=n()) %>% ungroup %>%
-            rename(CODE_18=corine.5m) %>%
+            rename(CODE_18=cat_corine.5m) %>%
             mutate(`5m`=N/sum(N)) %>% select(CODE_18, `5m`),
             by="CODE_18") %>%
-  full_join(., lc.df %>% st_set_geometry(NULL) %>% group_by(corine.10m) %>%
+  full_join(., lc.df %>% st_set_geometry(NULL) %>% group_by(cat_corine.10m) %>%
             summarise(N=n()) %>% ungroup %>%
-            rename(CODE_18=corine.10m) %>%
+            rename(CODE_18=cat_corine.10m) %>%
             mutate(`10m`=N/sum(N)) %>% select(CODE_18, `10m`),
             by="CODE_18") %>%
   filter(!is.na(CODE_18)) %>%
@@ -735,19 +806,19 @@ full_join(open_use %>% st_set_geometry(NULL) %>% group_by(affectatio) %>%
             summarise(Area=sum(area)) %>% ungroup %>%
             mutate(Vaud=as.numeric(Area/sum(Area))) %>%
             select(affectatio, Vaud),
-          lc.df %>% st_set_geometry(NULL) %>% group_by(open_use.pt) %>%
+          lc.df %>% st_set_geometry(NULL) %>% group_by(cat_open_use.pt) %>%
             summarise(N=n()) %>% ungroup %>%
-            rename(affectatio=open_use.pt) %>% filter(!is.na(affectatio)) %>%
+            rename(affectatio=cat_open_use.pt) %>% filter(!is.na(affectatio)) %>%
             mutate(Point=N/sum(N)) %>% select(affectatio, Point), 
           by="affectatio") %>%
-  full_join(., lc.df %>% st_set_geometry(NULL) %>% group_by(open_use.5m) %>%
+  full_join(., lc.df %>% st_set_geometry(NULL) %>% group_by(cat_open_use.5m) %>%
             summarise(N=n()) %>% ungroup %>%
-            rename(affectatio=open_use.5m) %>% filter(!is.na(affectatio)) %>%
+            rename(affectatio=cat_open_use.5m) %>% filter(!is.na(affectatio)) %>%
             mutate(`5m`=N/sum(N)) %>% select(affectatio, `5m`),
             by="affectatio") %>%
-  full_join(., lc.df %>% st_set_geometry(NULL) %>% group_by(open_use.10m) %>%
+  full_join(., lc.df %>% st_set_geometry(NULL) %>% group_by(cat_open_use.10m) %>%
             summarise(N=n()) %>% ungroup %>%
-            rename(affectatio=open_use.10m) %>% filter(!is.na(affectatio)) %>%
+            rename(affectatio=cat_open_use.10m) %>% filter(!is.na(affectatio)) %>%
             mutate(`10m`=N/sum(N)) %>% select(affectatio, `10m`),
             by="affectatio") %>%
   filter(!is.na(affectatio)) %>%
@@ -792,7 +863,9 @@ lc.df <- lc.df %>%
 ```{r road_map_all, echo=F}
 ggplot(VD) + geom_sf() + geom_sf(data=roads, size=0.2, colour="deepskyblue3") +
   theme(axis.text=element_blank(), 
-        panel.grid.major=element_blank())
+        axis.ticks=element_blank(),
+        panel.grid.major=element_blank(), 
+        panel.border=element_blank())
 ```
 
 There are `r n_distinct(roads$fclass)-2` different identified classes of roads or paths. 
@@ -881,6 +954,56 @@ hist(log(as.numeric(lc.df$bldg_dist)), breaks=50, col="grey30",
 
 
 We could make species accumulation curves to compare across habitat types or to compare with the structured samples.  
+
+## OpFo habitats  
+```{r opfo_accum, echo=F, message=F, warning=F}
+opfo.spp <- lc.df %>% st_set_geometry(NULL) %>% 
+  filter(!is.na(cat_opfo.5m) & !is.na(SPECIESID)) %>%
+  select(TubeNo, cat_opfo.5m, SPECIESID) %>% mutate(N=1) %>%
+  pivot_wider(names_from=SPECIESID, values_from=N, values_fill=0)
+acc.ls <- map(sort(unique(opfo.spp$cat_opfo.5m)), 
+              ~specaccum(filter(opfo.spp, cat_opfo.5m==.x) %>% 
+                           select(-TubeNo, -cat_opfo.5m),
+                         "random", 500)) %>% 
+  setNames(sort(unique(opfo.spp$cat_opfo.5m)))
+
+plot(acc.ls[[1]], ci=0, col=lc_cols[names(acc.ls)[1]], lwd=2, 
+     xlim=c(0, 3000), ylim=c(0, 65),
+     xlab="Tubes", ylab="Species", main="Opération Fourmis habitats (5m buffer)")
+for(i in 2:length(acc.ls)) {
+  plot(acc.ls[[i]], ci=0, col=lc_cols[names(acc.ls)[i]], lwd=2, add=T)
+}
+legend("bottomright", names(acc.ls), lty=1, lwd=2, col=lc_cols[names(acc.ls)], 
+       bty="n", cex=0.7)
+```
+
+## CORINE categories  
+Restricted to categories with greater than 10 tubes.  
+```{r corine_accum, echo=F, message=F, warning=F}
+corine_cat_g10 <- table(lc.df$cat_corine.5m)[table(lc.df$cat_corine.5m) > 10]
+corine.spp <- lc.df %>% st_set_geometry(NULL) %>% 
+  filter(cat_corine.5m %in% names(corine_cat_g10)) %>%
+  filter(!is.na(cat_corine.5m) & !is.na(SPECIESID)) %>%
+  select(TubeNo, cat_corine.5m, SPECIESID) %>% mutate(N=1) %>%
+  pivot_wider(names_from=SPECIESID, values_from=N, values_fill=0)
+acc.ls <- map(sort(unique(corine.spp$cat_corine.5m)), 
+              ~specaccum(filter(corine.spp, cat_corine.5m==.x) %>%
+                           select(-TubeNo, -cat_corine.5m),
+                         "random", 500)) %>% 
+  setNames(sort(unique(corine.spp$cat_corine.5m)))
+
+corine_cols <- viridis::viridis_pal()(length(acc.ls))
+plot(acc.ls[[1]], ci=0, col=corine_cols[1], lwd=2, xlim=c(0, 2500), ylim=c(0, 60),
+     xlab="Tubes", ylab="Species", main="CORINE land cover types (5m buffer)")
+for(i in 2:length(acc.ls)) {
+  plot(acc.ls[[i]], ci=0, col=corine_cols[i], lwd=2, add=T)
+}
+legend("bottomright", names(acc.ls), lty=1, lwd=2,
+       ol=corine_cols, bty="n", cex=0.7)
+```
+
+## Gardens  
+Using the garden categorization based on `HABITAT` descriptions as above, and the urban / non-urban categorization based on the CORINE dataset as above, we could maybe compare gardens in and out of urban zones.  
 ```{r garden_accum, echo=F, message=F, warning=F}
 garden.spp <- lc.df %>% st_set_geometry(NULL) %>% 
   filter(HAB_jardin & !is.na(SPECIESID)) %>%
@@ -904,14 +1027,15 @@ acc.ls <- list(garden_urban5m=specaccum(filter(garden.spp, corine_urban.5m) %>%
                                         "random", 500))
 plot(acc.ls[[1]], ci.type="poly", col=rgb(166,97,26, maxColorValue=256), 
      lwd=2, ci.lty=0, ci.col=rgb(166,97,26,150, maxColorValue=256), 
-     xlab="Tubes", ylab="Species", ylim=c(0,50), xlim=c(0, 300))
+     xlab="Tubes", ylab="Species", main="Urban x Garden",
+     ylim=c(0,50), xlim=c(0, 300))
 plot(acc.ls[[3]], ci.type="poly", col=rgb(166,97,26, maxColorValue=256), lty=2,
      lwd=2, ci.lty=0, ci.col=rgb(166,97,26,150, maxColorValue=256), add=T)
 plot(acc.ls[[2]], ci.type="poly", col=rgb(1,133,113, maxColorValue=256), 
      lwd=2, ci.lty=0, ci.col=rgb(1,133,113,150, maxColorValue=256), add=T)
 plot(acc.ls[[4]], ci.type="poly", col=rgb(1,133,113, maxColorValue=256), lty=2,
      lwd=2, ci.lty=0, ci.col=rgb(1,133,113,150, maxColorValue=256), add=T)
-legend("bottomright", lty=c(1,1,2,2), bty="n",
+legend("bottomright", lty=c(1,1,2,2), bty="n", lwd=2,
        legend=c("Urban garden", "Non-urban garden", 
                 "Urban other", "Non-urban other"), 
        col=c(rgb(166,97,26, maxColorValue=256), 
@@ -920,3 +1044,51 @@ legend("bottomright", lty=c(1,1,2,2), bty="n",
              rgb(1,133,113, maxColorValue=256)))
 
 ```
+
+
+## Pastures
+```{r pasture_accum, echo=F, message=F, warning=F}
+pasture.spp <- lc.df %>% st_set_geometry(NULL) %>% 
+  filter((HAB_paturage | use_paturage.5m) & 
+           !is.na(SPECIESID) & cat_opfo.5m %in% c("Autre", "PrairieSeche")) %>%
+  select(TubeNo, SPECIESID) %>% mutate(N=1) %>%
+  pivot_wider(names_from=SPECIESID, values_from=N, values_fill=0)
+nonpasture.spp <- lc.df %>% st_set_geometry(NULL) %>% 
+  filter(!(HAB_paturage | use_paturage.5m) & 
+           !is.na(SPECIESID) & cat_opfo.5m %in% c("Autre", "PrairieSeche")) %>%
+  select(TubeNo, SPECIESID) %>% mutate(N=1) %>%
+  pivot_wider(names_from=SPECIESID, values_from=N, values_fill=0)
+acc.ls <- list(paturage=specaccum(pasture.spp %>% select(-TubeNo),
+                                        "random", 500), 
+               nonpaturage=specaccum(nonpasture.spp %>% select(-TubeNo),
+                                        "random", 500))
+plot(acc.ls[[1]], ci.type="poly", col=rgb(166,97,26, maxColorValue=256), 
+     lwd=2, ci.lty=0, ci.col=rgb(166,97,26,150, maxColorValue=256), 
+     xlab="Tubes", ylab="Species", main="Pasture vs. non-pasture",
+     ylim=c(0,50), xlim=c(0, 500))
+plot(acc.ls[[2]], ci.type="poly", col=rgb(1,133,113, maxColorValue=256), 
+     lwd=2, ci.lty=0, ci.col=rgb(1,133,113,150, maxColorValue=256), add=T)
+legend("bottomright", lty=1, bty="n", lwd=2,
+       legend=c("Pasture (autre/PS)", "Non-pasture (autre/PS)"), 
+       col=c(rgb(166,97,26, maxColorValue=256), 
+             rgb(1,133,113, maxColorValue=256)))
+
+```
+
+
+
+
+----------
+
+
+# Possible analyses  
+- Species accumulation curves  
+  - Overall (public vs. structured)  
+  - Among habitats (public vs. structured, or focus on one)  
+  - Gardens vs. non-gardens (or similar)  
+- Species composition  
+  - Overall (public vs. structured)  
+  
+  
+  
+
