@@ -1089,18 +1089,71 @@ legend("bottomright", lty=1, bty="n", lwd=2,
 
 
 
+## Public v. structured samples: Total
+```{r ps_accum, echo=F, message=F, warning=F}
+p.spp <- lc.df %>% st_set_geometry(NULL) %>% 
+  filter(!is.na(SPECIESID)) %>%
+  select(TubeNo, SPECIESID) %>% mutate(N=1) %>%
+  pivot_wider(names_from=SPECIESID, values_from=N, values_fill=0)
+s.spp <- ant$str %>% st_set_geometry(NULL) %>%
+  filter(!is.na(SPECIESID)) %>%
+  select(TubeNo, SPECIESID) %>% mutate(N=1) %>%
+  pivot_wider(names_from=SPECIESID, values_from=N, values_fill=0)
+acc.ls <- list(p=specaccum(p.spp %>% select(-TubeNo), "random", 500),
+               s=specaccum(s.spp %>% select(-TubeNo), "random", 500))
+par(mfrow=c(1,1))
+plot(acc.ls[[1]], ci.type="poly", col=rgb(0,0,0), lty=2,
+     lwd=2, ci.lty=0, ci.col=rgb(0,0,0,.5), 
+     xlab="Tubes", ylab="Species", main="Public vs. Structured")
+plot(acc.ls[[2]], ci.type="poly", col=rgb(0,0,0), 
+     lwd=2, ci.lty=0, ci.col=rgb(0,0,0,.5), add=T)
+legend("bottomright", lty=2:1, bty="n", lwd=2,
+       legend=c("Public", "Structured"), 
+       col=rgb(0,0,0))
+```
 
-----------
 
 
-# Possible analyses  
-- Species accumulation curves  
-  - Overall (public vs. structured)  
-  - Among habitats (public vs. structured, or focus on one)  
-  - Gardens vs. non-gardens (or similar)  
-- Species composition  
-  - Overall (public vs. structured)  
-  
-  
-  
+
+## Public v. structured samples: By habitat
+```{r ps_opfo_accum, echo=F, message=F, warning=F}
+s_opfo.spp <- ant$str %>% st_set_geometry(NULL) %>% 
+  filter(!is.na(Categorie) & !is.na(SPECIESID)) %>%
+  select(TubeNo, Categorie, SPECIESID) %>% mutate(N=1) %>%
+  pivot_wider(names_from=SPECIESID, values_from=N, values_fill=0)
+p_opfo.spp <- lc.df %>% st_set_geometry(NULL) %>% 
+  filter(!is.na(cat_opfo.5m) & !is.na(SPECIESID)) %>%
+  select(TubeNo, cat_opfo.5m, SPECIESID) %>% mutate(N=1) %>%
+  pivot_wider(names_from=SPECIESID, values_from=N, values_fill=0)
+s_acc.ls <- map(sort(unique(s_opfo.spp$Categorie)), 
+              ~try(specaccum(filter(s_opfo.spp, Categorie==.x) %>% 
+                           select(-TubeNo, -Categorie),
+                         "random", 500), silent=T)) %>% 
+  setNames(sort(unique(s_opfo.spp$Categorie)))
+p_acc.ls <- map(sort(unique(p_opfo.spp$cat_opfo.5m)), 
+              ~specaccum(filter(p_opfo.spp, cat_opfo.5m==.x) %>% 
+                           select(-TubeNo, -cat_opfo.5m),
+                         "random", 500)) %>% 
+  setNames(sort(unique(opfo.spp$cat_opfo.5m)))
+
+
+par(mfrow=c(3,5))
+for(i in seq_along(s_acc.ls)) {
+  if(class(s_acc.ls[[i]]) != "try-error") {
+    tube.max <- max(p_acc.ls[[i]]$sites, s_acc.ls[[i]]$sites, na.rm=T)*1.1
+    rich.max <- max(p_acc.ls[[i]]$richness, s_acc.ls[[i]]$richness, na.rm=T)*1.1
+    plot(p_acc.ls[[i]], col=lc_cols[names(p_acc.ls)[i]], lwd=2, lty=3,
+         ci.type="poly", ci.lty=0, xlim=c(0, tube.max), ylim=c(0, rich.max),
+         ci.col=paste0(lc_cols[names(p_acc.ls)[i]], "88"),
+         xlab="Tubes", ylab="Species", main=names(p_acc.ls)[i])
+    plot(s_acc.ls[[i]], col=lc_cols[names(s_acc.ls)[i]], lwd=2, lty=1, 
+         ci.type="poly", ci.lty=0, 
+         ci.col=paste0(lc_cols[names(s_acc.ls)[i]], "88"), add=T)
+    legend("bottomright", c("Str.", "Pub."), lty=c(1,3), lwd=2,
+           col=lc_cols[names(s_acc.ls)[i]], bty="n")
+  }
+}
+```
+
+
 
