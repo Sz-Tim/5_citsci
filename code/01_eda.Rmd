@@ -197,6 +197,18 @@ Zoomed in close on a couple of points (OpFo, CORINE, VD):
 ![CORINE](../assets/smaller/CORINE_3.png){width="33%"}
 ![VD](../assets/smaller/VD_data_3.png){width="33%"}  
 
+
+### CORINE  
+
+CORINE is often used in the literature, but it is less instinctively appealing since we have access to datasets that are more thematically and spatially accurate/precise with the extent is limited to Vaud. On the other hand, using a less precise dataset like CORINE would be more forgiving of sample location error. CORINE could also potentially be useful for defining broadly whether samples were in cities/towns since the legend includes [*Continuous/Discontinuous urban fabric*](https://image.discomap.eea.europa.eu/arcgis/rest/services/Corine/CLC2018_WM/MapServer/legend) (in center column above, purple = discontinuous urban fabric). For the other datasets, the main concern is whether the point locations are reliably precise enough to align them with the layer polygons.  
+```{r CORINE_legend_1, echo=F, message=F, warning=F}
+read_csv(paste0(gis_dir, "corine_legend.csv")) %>% 
+  filter(CODE_18 %in% unique(corine$CODE_18)) %>%
+  select(Original) %>% rename(Category=Original)
+```
+
+
+
 ### Vaud land use  
 
 The land use data from the canton describes the reported usage in 2019, generally for open canopy habitats. The usage is quite detailed, with a focus on agriculture. Organic vs. conventional methods are not included. It uses 3-digit codes where the first digit indicates (roughly) *500: crops*, *600: pastures*, *700: permanent agriculture*, *800: other?*, and *900: other?*. This table shows the categories with corresponding area and percent of the total.  
@@ -207,10 +219,6 @@ open_use %>% rename(Category=affectatio) %>% st_set_geometry(NULL) %>%
   ungroup %>% mutate(Percent=round(as.numeric(Area/sum(Area))*100, 1)) %>% 
   arrange(Category)
 ```
-
-### CORINE  
-
-CORINE is often used in the literature, but it is less instinctively appealing since we have access to datasets that are more thematically and spatially accurate/precise with the extent is limited to Vaud. On the other hand, using a less precise dataset like CORINE would be more forgiving of sample location error. CORINE could also potentially be useful for defining broadly whether samples were in cities/towns since the legend includes [*Continuous/Discontinuous urban fabric*](https://image.discomap.eea.europa.eu/arcgis/rest/services/Corine/CLC2018_WM/MapServer/legend) (in center column above, purple = discontinuous urban fabric). For the other datasets, the main concern is whether the point locations are reliably precise enough to align them with the layer polygons.  
 
 
 
@@ -654,8 +662,6 @@ jardin.df <- full_join(filter(lc.df, HABITAT %in% HABITAT_jardin) %>%
               rename(Categorie=cat_opfo.10m, n_10m=n, pct_10m=percent), 
             by="Categorie") %>%
   select(Categorie, contains("n_"), contains("pct_"))
-knitr::kable(jardin.df, 
-             caption="Habitat extractions for tubes with HABITAT entries containing a jardin keyword")
 jardin.df %>% select(Categorie, contains("n_")) %>% 
   rename(Point=n_pt, `5m`=n_5m, `10m`=n_10m) %>%
   adorn_percentages(denominator="col") %>%
@@ -667,6 +673,8 @@ jardin.df %>% select(Categorie, contains("n_")) %>%
   labs(x="", y="Percent", 
        title="82-88% of 'jardin' tubes are ZC/Autre/CP based on location") +
   theme(axis.text.x=element_text(angle=270, hjust=0, vjust=0.5))
+knitr::kable(jardin.df, 
+             caption="Habitat extractions for tubes with HABITAT entries containing a jardin keyword")
 ```
 
 The buffers both place about 95% of the tubes in `ZoneConstruite`, `Autre`, or `CulturePerm`, compared with 83% of the point locations, which include a higher percentage of `transport`.
@@ -677,6 +685,11 @@ The buffers both place about 95% of the tubes in `ZoneConstruite`, `Autre`, or `
 
 ## Gardens & CORINE urban areas  
 As a first approximation, we could classify points as inside or outside urban areas using the CORINE land cover categories ([1XX indicate human-dominated types](https://image.discomap.eea.europa.eu/arcgis/rest/services/Corine/CLC2018_WM/MapServer/legend)). To categorize tubes as coming from gardens, there are two options: 1) use the `HABITAT` descriptions as above, including all tubes with *jardin* or *potage* in the description, or 2) using the *`r grep("jardin|potag", unique(open_use$affectatio), value=T)`* category in the Vaud land use dataset. Unfortunately, there are no tubes that are categorized as *`r grep("jardin|potag", unique(open_use$affectatio), value=T)`* based on location, regardless of buffering. 
+
+
+There are too few tubes with CORINE classifications of *111 Continuous urban fabric*, which identifies parts of the few largest cities in Vaud. The *112 Discontinuous urban fabric* identifies most (but not all) towns, so the comparison of gardens between cities vs. non-cities would need to be between urban and non-urban categories.  
+![CORINE](../assets/smaller/CORINE_urban.png){width="70%"}
+
 ```{r corine_urban, echo=FALSE}
 jardin_keywords <- paste("jardin", "potag", sep="|")
 HABITAT_jardin <- unique(grep(jardin_keywords, unique(lc.df$HABITAT), value=T))
@@ -694,21 +707,16 @@ lc.df <- lc.df %>% mutate(HAB_jardin=HABITAT %in% HABITAT_jardin,
                           corine_urbanCont.10m=grepl("111", cat_corine.10m))
 
 # jardin HABITAT descriptions by corine category
-lc.df %>% st_set_geometry(NULL) %>% tabyl(HAB_jardin, corine_urban.pt) %>%
-  knitr::kable(col.names=c("Garden", "Non-Urban", "Urban"), caption="Corine: Point")
 lc.df %>% st_set_geometry(NULL) %>% tabyl(HAB_jardin, corine_urban.5m) %>%
-  knitr::kable(col.names=c("Garden", "Non-Urban", "Urban"), caption="Corine: 5m")
-lc.df %>% st_set_geometry(NULL) %>% tabyl(HAB_jardin, corine_urban.10m) %>%
-  knitr::kable(col.names=c("Garden", "Non-Urban", "Urban"), caption="Corine: 10m")
+  knitr::kable(col.names=c("Garden", "Non-Urban", "Urban"), 
+               caption="Corine: 5m (point and 10m buffer are identical)")
 ```
 
 
-There are too few tubes with CORINE classifications of *111 Continuous urban fabric*, which identifies parts of the few largest cities in Vaud. The *112 Discontinuous urban fabric* identifies most (but not all) towns, so the comparison of gardens between cities vs. non-cities would need to be between urban and non-urban categories.  
-![CORINE](../assets/smaller/CORINE_urban.png){width="70%"}
 
 ## Population & density  
 
-Another possibility would be to categorize communes based on population (that's the smallest unit I've found).  
+Another possibility would be to categorize communes based on population (that's the smallest unit I've found).   
 ```{r map_population, echo=FALSE}
 A <- ggplot(VD_raw, aes(fill=pop)) + geom_sf(size=0.1) +
   ggtitle("2019 Population") +
@@ -827,7 +835,7 @@ full_join(corine %>% st_set_geometry(NULL) %>% group_by(CODE_18) %>%
 ```
 
 For reference:  
-```{r CORINE_legend, echo=F, message=F, warning=F}
+```{r CORINE_legend_2, echo=F, message=F, warning=F}
 read_csv(paste0(gis_dir, "corine_legend.csv")) %>% 
   filter(CODE_18 %in% unique(corine$CODE_18)) %>%
   select(Original) %>% rename(Category=Original)
@@ -1189,7 +1197,7 @@ legend("bottomright", lty=1, bty="n", lwd=2,
 # Summaries by habitat  {.tabset .tabeset-fade}  
 
 ## OpFo habitats  
-Using the categorizations from the 5m buffer:  
+Using the categorizations from the 5m buffer, sorted by `nTubes`:   
 ```{r counts_opfo, echo=F, message=F}
 lc.df %>% filter(!is.na(cat_opfo.5m)) %>% st_set_geometry(NULL) %>%
   group_by(cat_opfo.5m) %>%
@@ -1200,25 +1208,26 @@ lc.df %>% filter(!is.na(cat_opfo.5m)) %>% st_set_geometry(NULL) %>%
 
 
 ## CORINE categories  
-Using the categorizations from the 5m buffer:  
+Using the categorizations from the 5m buffer, sorted by `nTubes`:   
 ```{r counts_corine, echo=F, message=F}
 lc.df %>% filter(!is.na(cat_corine.5m)) %>% st_set_geometry(NULL) %>%
   group_by(cat_corine.5m) %>%
   summarise(nSpp=n_distinct(SPECIESID), nTubes=n()) %>% 
-  arrange(desc(nTubes))
-```
-
-For reference:  
-```{r CORINE_legend2, echo=F, message=F, warning=F}
-read_csv(paste0(gis_dir, "corine_legend.csv")) %>% 
-  filter(CODE_18 %in% unique(corine$CODE_18)) %>%
-  select(Original) %>% rename(Category=Original)
+  arrange(desc(nTubes)) %>% ungroup %>%
+  left_join(., 
+            read_csv(paste0(gis_dir, "corine_legend.csv"),
+                     col_types=c(CODE_18="c")),
+            by=c("cat_corine.5m"="CODE_18")) %>%
+  mutate(Original=if_else(cat_corine.5m=="243", 
+                          "243: Principally agriculture, but with significant natural veg.",
+                          Original)) %>%
+  select(Original, nSpp, nTubes)
 ```
 
 
 
 ## Land use categories  
-Using the categorizations from the 5m buffer:  
+Using the categorizations from the 5m buffer, sorted by `nTubes`:  
 ```{r counts_openuse, echo=F, message=F}
 lc.df %>% filter(!is.na(cat_open_use.5m)) %>% st_set_geometry(NULL) %>%
   group_by(cat_open_use.5m) %>%
