@@ -6,6 +6,8 @@ output:
     theme: spacelab
     df_print: paged
     toc: yes
+    toc_depth: 2
+    toc_float: true
   pdf_document:
     toc: yes
   html_notebook:
@@ -15,15 +17,22 @@ editor_options:
   chunk_output_type: console
 ---
 
-This notebook explores the Opération Fourmis public inventory data and summarises it across a few different potential variables of interest.  
-
 
 --------
 
 # Overview  
-The coordinates associated with the public inventory data are probably approximately accurate overall. My concern is that even relatively minor inaccuracies in the coordinates will cause a lot of misalignment between the local GIS layers and where the ants were actually collected. Even with ideal location recording methods and conditions, the GPS on devices like smartphones typically have a precision of about ± 5m. Before assigning habitat or land use categories to the collections, we need to know how reliable that is as a method, and constrain the questions and analyses accordingly.
+Under ideal conditions and recording methods, the GPS on devices like smartphones typically has a precision of about ±5m, even though it will display coordinates that are much more precise. Relatively minor inaccuracies in the sample locations (5-20m) could result in a lot of miscategorizations and miscalculations when aligning with local GIS layers, particularly highly detailed layers (like the habitat layer or landuse data). I tried to characterize the amount of uncertainty, think of different ways to filter the data, and explore a couple of options for categorizing samples. Briefly:  
 
-```{r setup}
+- The `GEOPRECISION` field specifies whether the coordinates were measured, extrapolated, etc. We can remove bad extrapolations.  
+- Some coordinates use **decimal degrees**. These can be filtered to exclude those with too few decimal places (e.g., 46.62ºN 6.72ºE specifies roughly a square kilometer).  
+- Assuming good GPS conditions, **buffers of 5-10m** can determine the composition of plausible habitats for each point.  
+- The optional `HABITAT` field gives descriptions of where the ants were collected. These can be cross-referenced with the habitats extracted by location, under the assumption that the `HABITAT` field is more accurate.  
+- Other land cover datasets like **CORINE** are less precise, and would not require as much confidence in the point locations for land cover assignments.  
+
+I also included some EDA for distances to the nearest road (and nearest road type), distances to the nearest building, and species accumulation curves using the habitat assigned with the 5m buffer (though I'm not convinced using the habitat layer from the structured samples is wise, at least for all categories).  
+
+
+```{r setup, echo=F}
 # set directory for knitr as main project directory
 knitr::opts_knit$set(root.dir=rprojroot::find_rstudio_root_file())
 ```
@@ -84,7 +93,7 @@ ant$pub %>%
 
 # Locational precision  
 
-## `GEOPRECISION`: Coordinate source  
+## `GEOPRECISION`  
 One concern with extracting local variables like habitat, land use, distance from the nearest road, or distance from the nearest building is that that requires a lot of confidence in the latitude and longitude associated with the point locations. The column `GEOPRECISION` indicates whether the location was extrapolated, corrected, or measured (or some combination). 
 ```{r geoprecision, echo=FALSE}
 tabyl(ant$pub$GEOPRECISION) %>% arrange(desc(n)) %>% adorn_pct_formatting() %>%
@@ -94,7 +103,7 @@ tabyl(ant$pub$GEOPRECISION) %>% arrange(desc(n)) %>% adorn_pct_formatting() %>%
 ```
 The coordinates were mostly measured directly by the collector, and only a small proportion were extrapolated badly. In theory, we could assume that *mesuré*, *extrapolé*, *extrapolé/corrigé*, and *mesuré/corrigé* indicate that the coordinates can be used directly. 
 
-## Digits reported in decimal degrees  
+## Decimal degree digits  
 The number of reported digits is an estimate of precision for coordinates reported in decimal degrees, but not for the Swiss coordinate system which reports 6 digits no matter what. For latitude and longitude at the equator, an arc-degree corresponds with about 111km. At a [longitude of 46ºN](https://opendem.info/arc2meters.html), an arc-degree is 76.5km.
 ```{r prec_kable, echo=FALSE}
 knitr::kable(tibble(Dec=c(1:6), 
@@ -158,34 +167,37 @@ pub.10m <- pub_filt %>% st_buffer(dist=10)
 
 
 
-# Habitat with locational uncertainty
+# Habitat & locational uncertainty  
 
 ## Habitat datasets  
 There are three land cover / land use datasets available:  
+
 - Habitat layer created for the structured sampling  
 - [CORINE Land Cover](https://land.copernicus.eu/pan-european/corine-land-cover/clc2018), which has a [broader legend](https://image.discomap.eea.europa.eu/arcgis/rest/services/Corine/CLC2018_WM/MapServer/legend) and is consistent across Europe, but uses a minimum mapping unit of 25 ha (500mx500m)  
 - Land use for largely agricultural land in Vaud in 2019  
   
 CORINE and the Opération Fourmis dataset have full coverage across Vaud, while the detailed land use dataset is mostly restricted to open canopy areas in the lower elevations (OpFo, CORINE, VD).  
 
-![opfo](../assets/small/opfo_VD.png){width="33%"}
-![CORINE](../assets/small/CORINE_VD.png){width="33%"}
-![VD](../assets/small/VD_data_VD.png){width="33%"}  
+![opfo](../assets/smaller/opfo_VD.png){width="33%"}
+![CORINE](../assets/smaller/CORINE_VD.png){width="33%"}
+![VD](../assets/smaller/VD_data_VD.png){width="33%"}  
   
 Here is a random area within Vaud showing the differences. The grid is 1km x 1km, with the public inventory tubes shown as the small black points (with 5m and 10m buffers), and building footprints from open street maps. (OpFo, CORINE, VD).  
-![opfo](../assets/small/opfo.png){width="33%"}
-![CORINE](../assets/small/CORINE.png){width="33%"}
-![VD](../assets/small/VD_data.png){width="33%"}
+![opfo](../assets/smaller/opfo.png){width="33%"}
+![CORINE](../assets/smaller/CORINE.png){width="33%"}
+![VD](../assets/smaller/VD_data.png){width="33%"}
 
 Zoomed in on the edge of a town (OpFo, CORINE, VD):  
-![opfo](../assets/small/opfo_2.png){width="33%"}
-![CORINE](../assets/small/CORINE_2.png){width="33%"}
-![VD](../assets/small/VD_data_2.png){width="33%"}
+![opfo](../assets/smaller/opfo_2.png){width="33%"}
+![CORINE](../assets/smaller/CORINE_2.png){width="33%"}
+![VD](../assets/smaller/VD_data_2.png){width="33%"}
 
 Zoomed in close on a couple of points (OpFo, CORINE, VD):  
-![opfo](../assets/small/opfo_3.png){width="33%"}
-![CORINE](../assets/small/CORINE_3.png){width="33%"}
-![VD](../assets/small/VD_data_3.png){width="33%"}  
+![opfo](../assets/smaller/opfo_3.png){width="33%"}
+![CORINE](../assets/smaller/CORINE_3.png){width="33%"}
+![VD](../assets/smaller/VD_data_3.png){width="33%"}  
+
+### Vaud land use  
 
 The land use data from the canton describes the reported usage in 2019, generally for open canopy habitats. The usage is quite detailed, with a focus on agriculture. Organic vs. conventional methods are not included. It uses 3-digit codes where the first digit indicates (roughly) *500: crops*, *600: pastures*, *700: permanent agriculture*, *800: other?*, and *900: other?*. This table shows the categories with corresponding area and percent of the total.  
 ```{r VD_data, echo=FALSE, message=FALSE}
@@ -196,11 +208,13 @@ open_use %>% rename(Category=affectatio) %>% st_set_geometry(NULL) %>%
   arrange(Category)
 ```
 
-CORINE is often used in the literature, but it probably is not very helpful for us, particularly since we have access to datasets that are more thematically and spatially accurate and precise since the extent is limited to Vaud. It could potentially be useful for defining broadly whether samples were in cities/towns since the legend includes [*Continuous/Discontinuous urban fabric*](https://image.discomap.eea.europa.eu/arcgis/rest/services/Corine/CLC2018_WM/MapServer/legend) (in center column above, purple = discontinuous urban fabric). For the other datasets, the main concern is whether the point locations are reliably precise enough to align them with the layer polygons.  
+### CORINE  
+
+CORINE is often used in the literature, but it is less instinctively appealing since we have access to datasets that are more thematically and spatially accurate/precise with the extent is limited to Vaud. On the other hand, using a less precise dataset like CORINE would be more forgiving of sample location error. CORINE could also potentially be useful for defining broadly whether samples were in cities/towns since the legend includes [*Continuous/Discontinuous urban fabric*](https://image.discomap.eea.europa.eu/arcgis/rest/services/Corine/CLC2018_WM/MapServer/legend) (in center column above, purple = discontinuous urban fabric). For the other datasets, the main concern is whether the point locations are reliably precise enough to align them with the layer polygons.  
 
 
 
-## Habitat extraction: Points and buffers  
+## Habitat: Points & buffers  
 Using the same habitat categories as the structured samples (first column of plots above), we can calculate the habitat for each tube as the point location, the dominant habitat within 5m, and the dominant habitat within 10m.
 ```{r habitat_calc, eval=FALSE, message=FALSE, warning=FALSE, include=FALSE}
 if(any(!st_is_valid(lc))) lc <- st_make_valid(lc)
@@ -222,7 +236,7 @@ st_write(st_collection_extract(lc_5m.intsct %>% ungroup, "POLYGON"),
 st_write(st_collection_extract(lc_10m.intsct %>% ungroup, "POLYGON"), 
          paste0(gis_dir, "opfo_public_lc_10m.shp"))
 ```
-```{r habitat_load, echo=F, results='hide', message=F}
+```{r habitat_load, echo=F, results='hide', message=F, warning=F}
 # Run above operations one time only because of processing time
 lc_pt.join <- st_read(paste0(gis_dir, "opfo_public_lc_pts.shp"))
 lc_5m.intsct <- st_read(paste0(gis_dir, "opfo_public_lc_5m.shp"))
@@ -288,8 +302,9 @@ lc.df %>% st_set_geometry(NULL) %>%
   scale_y_continuous(labels=scales::percent_format()) + 
   scale_fill_manual(values=c("gray", "#006d2c")) +
   labs(x="", y="Percent of tubes",
-       title="Buffers show most difference with points in OpFo (~11%)") +
-  theme(axis.text.x=element_text(angle=270, hjust=0, vjust=0.5))
+       title="\nBuffers show most difference with points in OpFo (~11%)") +
+  theme(axis.text.x=element_text(angle=270, hjust=0, vjust=0.5),
+        legend.position="bottom")
 lc.df %>% st_set_geometry(NULL) %>% 
   select(starts_with("n_")) %>% 
   pivot_longer(everything(), names_to="Est", values_to="N") %>%
@@ -306,7 +321,8 @@ lc.df %>% st_set_geometry(NULL) %>%
   scale_y_continuous(labels=scales::percent_format()) + 
   scale_fill_manual(values=buffer_col) +
   labs(x="Number of habitats", y="Percent of tubes", 
-       title="Most OpFo buffers include multiple habitats")
+       title="\nMost OpFo buffers include multiple habitats") +
+  theme(legend.position="bottom")
 lc.df %>% st_set_geometry(NULL) %>%
   select(starts_with("prLargest_")) %>% 
   pivot_longer(everything(), names_to="Est", values_to="prLargest") %>%
@@ -321,12 +337,16 @@ lc.df %>% st_set_geometry(NULL) %>%
   geom_density(size=0.3, alpha=0.7, colour="grey30") +
   scale_x_continuous(labels=scales::percent_format(), limits=c(0,1)) + 
   scale_fill_manual(values=buffer_col) +
-  labs(x="Percent coverage of dominant category", y="Density")
+  labs(x="Percent coverage of dominant category", y="Density",
+       title="\nCoverage of the dominant category within the buffer") +
+  theme(legend.position="bottom")
 ```
 
 
 
-## `HABITAT`: Comparison of reported and extracted OpFo habitats  
+## `HABITAT`: Cross-reference {.tabset .tabeset-fade}  
+
+### `HABITAT` entries  
 The public samples included a field for habitat, and `r sum(!is.na(pub_filt$HABITAT))` tubes (`r paste0(round(sum(!is.na(pub_filt$HABITAT))/nrow(pub_filt)*100, 1), "%")`) include a free-form entry. However, these were not standardized, and there were `r n_distinct(pub_filt$HABITAT, na.rm=T)` unique responses. They range from extremely precise about where the ant was captured to rather general. Some seem to describe the diameter of the tree where the ant was collected.  
 ```{r habitat_entries, echo=FALSE}
 tabyl(str_sub(lc.df$HABITAT, 1, 60)) %>% select(1,2) %>% 
@@ -334,6 +354,7 @@ tabyl(str_sub(lc.df$HABITAT, 1, 60)) %>% select(1,2) %>%
 ```
 
 Many of the habitats used for the OpFo structured samples are unlikely to have direct matches that would allow for unambiguous categorization. Searches for keywords could give an idea of how well the extracted habitat matches the stated habitat for the (mostly) unambiguous keywords.
+
 
 ### Forest  
 Forests are generally large habitat polygons, and most `HABITAT` descriptions including the word *forêt* should be describing tubes collected in forest habitat. Edges, borders, and clearings can be filtered out to look at a sort of 'best case' scenario.
@@ -369,8 +390,6 @@ foret.df <- full_join(filter(lc.df, HABITAT %in% HABITAT_foret) %>%
               rename(Categorie=cat_opfo.10m, n_10m=n, pct_10m=percent), 
             by="Categorie") %>%
   select(Categorie, contains("n_"), contains("pct_"))
-knitr::kable(foret.df, 
-             caption="Habitat extractions for tubes with HABITAT reported as forest.")
 foret.df %>% select(Categorie, contains("n_")) %>% 
   rename(Point=n_pt, `5m`=n_5m, `10m`=n_10m) %>%
   adorn_percentages(denominator="col") %>%
@@ -383,6 +402,8 @@ foret.df %>% select(Categorie, contains("n_")) %>%
        title="Forest categorization works best with 10m buffer",
        subtitle="But 30.7% of 'forest' tubes are not forest by 10m location") +
   theme(axis.text.x=element_text(angle=270, hjust=0, vjust=0.5))
+knitr::kable(foret.df, 
+             caption="Habitat extractions for tubes with HABITAT reported as forest.")
 ```
 
 The high proportion of point locations and 5m buffers classified as `transport` could reflect that the ants were collected along a road in the forest, or that the coordinates were recorded after returning to the car.
@@ -418,8 +439,6 @@ edge.df <- full_join(filter(lc.df, HABITAT %in% HABITAT_edge) %>%
               rename(Categorie=cat_opfo.10m, n_10m=n, pct_10m=percent), 
             by="Categorie") %>%
   select(Categorie, contains("n_"), contains("pct_"))
-knitr::kable(edge.df, 
-             caption="Habitat extractions for tubes with HABITAT reported as lisière")
 edge.df %>% select(Categorie, contains("n_")) %>% 
   rename(Point=n_pt, `5m`=n_5m, `10m`=n_10m) %>%
   adorn_percentages(denominator="col") %>%
@@ -431,6 +450,8 @@ edge.df %>% select(Categorie, contains("n_")) %>%
   labs(x="", y="Percent", 
        title="Few 'edge' tubes are lisière based on location") +
   theme(axis.text.x=element_text(angle=270, hjust=0, vjust=0.5))
+knitr::kable(edge.df, 
+             caption="Habitat extractions for tubes with HABITAT reported as lisière")
 ```
 
 The point locations and 5m buffer capture `lisière` about equally, but it is still only 17% of the tubes with *lisi.re* in the `HABITAT` description. 
@@ -467,8 +488,6 @@ road.df <- full_join(filter(lc.df, HABITAT %in% HABITAT_road) %>%
               rename(Categorie=cat_opfo.10m, n_10m=n, pct_10m=percent), 
             by="Categorie") %>%
   select(Categorie, contains("n_"), contains("pct_"))
-knitr::kable(road.df, 
-             caption="Habitat extractions for tubes with HABITAT reported as transport")
 road.df %>% select(Categorie, contains("n_")) %>% 
   rename(Point=n_pt, `5m`=n_5m, `10m`=n_10m) %>%
   adorn_percentages(denominator="col") %>%
@@ -480,6 +499,8 @@ road.df %>% select(Categorie, contains("n_")) %>%
   labs(x="", y="Percent", 
        title="36.2% of 'road' tubes are transport based on 5m buffer") +
   theme(axis.text.x=element_text(angle=270, hjust=0, vjust=0.5))
+knitr::kable(road.df, 
+             caption="Habitat extractions for tubes with HABITAT reported as transport")
 ```
 
 More tubes with `HABITAT` descriptions including *rue* and *route* are classified as `transport` than any other category based on 5m locations, but it is still only about a third. Surprisingly, there is not much difference between the point locations and the buffers.  
@@ -518,8 +539,6 @@ ZC.df <- full_join(filter(lc.df, HABITAT %in% HABITAT_ZC) %>%
               rename(Categorie=cat_opfo.10m, n_10m=n, pct_10m=percent), 
             by="Categorie") %>%
   select(Categorie, contains("n_"), contains("pct_"))
-knitr::kable(ZC.df, 
-             caption="Habitat extractions for tubes with HABITAT entries containing a ZC keyword")
 ZC.df %>% select(Categorie, contains("n_")) %>% 
   rename(Point=n_pt, `5m`=n_5m, `10m`=n_10m) %>%
   adorn_percentages(denominator="col") %>%
@@ -531,6 +550,8 @@ ZC.df %>% select(Categorie, contains("n_")) %>%
   labs(x="", y="Percent", 
        title="80% of 'ZC' tubes are ZC based on location") +
   theme(axis.text.x=element_text(angle=270, hjust=0, vjust=0.5))
+knitr::kable(ZC.df, 
+             caption="Habitat extractions for tubes with HABITAT entries containing a ZC keyword")
 ```
 
 Generally good correspondence, with minimal differences among buffers. 
@@ -575,8 +596,6 @@ pasture.df <- full_join(filter(lc.df, HABITAT %in% HABITAT_paturage) %>%
               rename(Categorie=cat_opfo.10m, n_10m=n, pct_10m=percent), 
             by="Categorie") %>%
   select(Categorie, contains("n_"), contains("pct_"))
-knitr::kable(pasture.df, 
-             caption="Habitat extractions for tubes with HABITAT entries containing p*turage")
 pasture.df %>% select(Categorie, contains("n_")) %>% 
   rename(Point=n_pt, `5m`=n_5m, `10m`=n_10m) %>%
   adorn_percentages(denominator="col") %>%
@@ -588,6 +607,8 @@ pasture.df %>% select(Categorie, contains("n_")) %>%
   labs(x="", y="Percent", 
        title="70-77% of 'pasture' tubes are Autre or Prairie Sèche ") +
   theme(axis.text.x=element_text(angle=270, hjust=0, vjust=0.5))
+knitr::kable(pasture.df, 
+             caption="Habitat extractions for tubes with HABITAT entries containing p*turage")
 ```
 
 Tubes collected in pastures based on `HABITAT` description are distributed across only 6 types of extracted land cover, with most aligning with `Autre`. Sizable numbers mapped to `lisière` or `transport`, despite removing descriptions containing the word `lisi*re`.  
@@ -600,8 +621,8 @@ Tubes collected in pastures based on `HABITAT` description are distributed acros
 
 
 
-# Gardens  
-## `HABITAT` descriptions and OpFo habitats  
+# Gardens & urban areas  
+## `HABITAT` & OpFo habitats  
 Some of the `HABITAT` descriptions specify that they were collected in gardens. My expectation is that these tubes should almost entirely categorized as `ZoneConstruite`, `Autre`, and `CulturePerm`. 
 ```{r habitat_entries_garden, echo=F, warning=F, message=F}
 jardin_keywords <- paste("jardin", "potag", sep="|")
@@ -654,7 +675,7 @@ The buffers both place about 95% of the tubes in `ZoneConstruite`, `Autre`, or `
 
 
 
-## Gardens in and out of CORINE-defined urban areas  
+## Gardens & CORINE urban areas  
 As a first approximation, we could classify points as inside or outside urban areas using the CORINE land cover categories ([1XX indicate human-dominated types](https://image.discomap.eea.europa.eu/arcgis/rest/services/Corine/CLC2018_WM/MapServer/legend)). To categorize tubes as coming from gardens, there are two options: 1) use the `HABITAT` descriptions as above, including all tubes with *jardin* or *potage* in the description, or 2) using the *`r grep("jardin|potag", unique(open_use$affectatio), value=T)`* category in the Vaud land use dataset. Unfortunately, there are no tubes that are categorized as *`r grep("jardin|potag", unique(open_use$affectatio), value=T)`* based on location, regardless of buffering. 
 ```{r corine_urban, echo=FALSE}
 jardin_keywords <- paste("jardin", "potag", sep="|")
@@ -683,7 +704,9 @@ lc.df %>% st_set_geometry(NULL) %>% tabyl(HAB_jardin, corine_urban.10m) %>%
 
 
 There are too few tubes with CORINE classifications of *111 Continuous urban fabric*, which identifies parts of the few largest cities in Vaud. The *112 Discontinuous urban fabric* identifies most (but not all) towns, so the comparison of gardens between cities vs. non-cities would need to be between urban and non-urban categories.  
-![CORINE](../assets/small/CORINE_urban.png){width="70%"}
+![CORINE](../assets/smaller/CORINE_urban.png){width="70%"}
+
+## Population & density  
 
 Another possibility would be to categorize communes based on population (that's the smallest unit I've found).  
 ```{r map_population, echo=FALSE}
@@ -737,7 +760,7 @@ hist(log(as.numeric(VD_raw$popDens)), xlab="2019 log density (log(pop/km2))", ma
 
 
 
-# Extracted habitat comparison to Vaud
+# Extracted habitat vs. Vaud {.tabset .tabset-fade}  
 
 ## OpFo habitats  
 Using the habitat types from the structured samples, the public dataset clearly overrepresents `ZoneConstruite` and underrepresents `Autre`.  
@@ -811,7 +834,7 @@ read_csv(paste0(gis_dir, "corine_legend.csv")) %>%
 ```
 
 
-## Detailed land use  
+## Land use  
 For the land use, many crops are underrepresented, while pastures tend to be overrepresented. This is not really surprising given where people would be expected to go to collect ants.  
 ```{r landuse_props, echo=FALSE, message=FALSE, warning=F}
 full_join(open_use %>% st_set_geometry(NULL) %>% group_by(affectatio) %>%
@@ -962,10 +985,78 @@ hist(log(as.numeric(lc.df$bldg_dist)), breaks=50, col="grey30",
 
 ----------
 
-# Species accumulation curves  
+# Species accumulation curves {.tabset .tabset-fade}    
 
 
 We could make species accumulation curves to compare across habitat types or to compare with the structured samples.  
+
+## Public v. structured samples: Total
+```{r ps_accum, echo=F, message=F, warning=F}
+p.spp <- lc.df %>% st_set_geometry(NULL) %>% 
+  filter(!is.na(SPECIESID)) %>%
+  select(TubeNo, SPECIESID) %>% mutate(N=1) %>%
+  pivot_wider(names_from=SPECIESID, values_from=N, values_fill=0)
+s.spp <- ant$str %>% st_set_geometry(NULL) %>%
+  filter(!is.na(SPECIESID)) %>%
+  select(TubeNo, SPECIESID) %>% mutate(N=1) %>%
+  pivot_wider(names_from=SPECIESID, values_from=N, values_fill=0)
+acc.ls <- list(p=specaccum(p.spp %>% select(-TubeNo), "random", 500),
+               s=specaccum(s.spp %>% select(-TubeNo), "random", 500))
+par(mfrow=c(1,1))
+plot(acc.ls[[1]], ci.type="poly", col=rgb(0,0,0), lty=2,
+     lwd=2, ci.lty=0, ci.col=rgb(0,0,0,.5), 
+     xlab="Tubes", ylab="Species", main="Public vs. Structured")
+plot(acc.ls[[2]], ci.type="poly", col=rgb(0,0,0), 
+     lwd=2, ci.lty=0, ci.col=rgb(0,0,0,.5), add=T)
+legend("bottomright", lty=2:1, bty="n", lwd=2,
+       legend=c("Public", "Structured"), 
+       col=rgb(0,0,0))
+```
+
+
+
+
+## Public v. structured samples: By habitat
+```{r ps_opfo_accum, echo=F, message=F, warning=F}
+s_opfo.spp <- ant$str %>% st_set_geometry(NULL) %>% 
+  filter(!is.na(Categorie) & !is.na(SPECIESID)) %>%
+  select(TubeNo, Categorie, SPECIESID) %>% mutate(N=1) %>%
+  pivot_wider(names_from=SPECIESID, values_from=N, values_fill=0)
+p_opfo.spp <- lc.df %>% st_set_geometry(NULL) %>% 
+  filter(!is.na(cat_opfo.5m) & !is.na(SPECIESID)) %>%
+  select(TubeNo, cat_opfo.5m, SPECIESID) %>% mutate(N=1) %>%
+  pivot_wider(names_from=SPECIESID, values_from=N, values_fill=0)
+s_acc.ls <- map(sort(unique(s_opfo.spp$Categorie)), 
+              ~try(specaccum(filter(s_opfo.spp, Categorie==.x) %>% 
+                           select(-TubeNo, -Categorie),
+                         "random", 500), silent=T)) %>% 
+  setNames(sort(unique(s_opfo.spp$Categorie)))
+p_acc.ls <- map(sort(unique(p_opfo.spp$cat_opfo.5m)), 
+              ~specaccum(filter(p_opfo.spp, cat_opfo.5m==.x) %>% 
+                           select(-TubeNo, -cat_opfo.5m),
+                         "random", 500)) %>% 
+  setNames(sort(unique(p_opfo.spp$cat_opfo.5m)))
+
+
+par(mfrow=c(2,3), mar=c(3,2,2,0)+0.5)
+for(i in seq_along(s_acc.ls)) {
+  if(class(s_acc.ls[[i]]) != "try-error") {
+    tube.max <- max(p_acc.ls[[i]]$sites, s_acc.ls[[i]]$sites, na.rm=T)*1.1
+    rich.max <- max(p_acc.ls[[i]]$richness, s_acc.ls[[i]]$richness, na.rm=T)*1.1
+    plot(p_acc.ls[[i]], col=lc_cols[names(p_acc.ls)[i]], lwd=2, lty=3,
+         ci.type="poly", ci.lty=0, xlim=c(0, tube.max), ylim=c(0, rich.max),
+         ci.col=paste0(lc_cols[names(p_acc.ls)[i]], "88"),
+         xlab="", ylab="", main=names(p_acc.ls)[i])
+    plot(s_acc.ls[[i]], col=lc_cols[names(s_acc.ls)[i]], lwd=2, lty=1, 
+         ci.type="poly", ci.lty=0, 
+         ci.col=paste0(lc_cols[names(s_acc.ls)[i]], "88"), add=T)
+    legend("bottomright", c("Str.", "Pub."), lty=c(1,3), lwd=2,
+           col=lc_cols[names(s_acc.ls)[i]], bty="n")
+  }
+}
+```
+
+
 
 ## OpFo habitats  
 ```{r opfo_accum, echo=F, message=F, warning=F}
@@ -1058,7 +1149,8 @@ legend("bottomright", lty=c(1,1,2,2), bty="n", lwd=2,
 ```
 
 
-## Pastures
+## Pastures  
+Using pastures from the `HABITAT` descriptions as above, restricting to *Autre* and *Prairie Sèche* based on 5m buffers.  
 ```{r pasture_accum, echo=F, message=F, warning=F}
 pasture.spp <- lc.df %>% st_set_geometry(NULL) %>% 
   filter((HAB_paturage | use_paturage.5m) & 
@@ -1089,71 +1181,51 @@ legend("bottomright", lty=1, bty="n", lwd=2,
 
 
 
-## Public v. structured samples: Total
-```{r ps_accum, echo=F, message=F, warning=F}
-p.spp <- lc.df %>% st_set_geometry(NULL) %>% 
-  filter(!is.na(SPECIESID)) %>%
-  select(TubeNo, SPECIESID) %>% mutate(N=1) %>%
-  pivot_wider(names_from=SPECIESID, values_from=N, values_fill=0)
-s.spp <- ant$str %>% st_set_geometry(NULL) %>%
-  filter(!is.na(SPECIESID)) %>%
-  select(TubeNo, SPECIESID) %>% mutate(N=1) %>%
-  pivot_wider(names_from=SPECIESID, values_from=N, values_fill=0)
-acc.ls <- list(p=specaccum(p.spp %>% select(-TubeNo), "random", 500),
-               s=specaccum(s.spp %>% select(-TubeNo), "random", 500))
-par(mfrow=c(1,1))
-plot(acc.ls[[1]], ci.type="poly", col=rgb(0,0,0), lty=2,
-     lwd=2, ci.lty=0, ci.col=rgb(0,0,0,.5), 
-     xlab="Tubes", ylab="Species", main="Public vs. Structured")
-plot(acc.ls[[2]], ci.type="poly", col=rgb(0,0,0), 
-     lwd=2, ci.lty=0, ci.col=rgb(0,0,0,.5), add=T)
-legend("bottomright", lty=2:1, bty="n", lwd=2,
-       legend=c("Public", "Structured"), 
-       col=rgb(0,0,0))
+
+
+----------
+
+
+# Summaries by habitat  {.tabset .tabeset-fade}  
+
+## OpFo habitats  
+Using the categorizations from the 5m buffer:  
+```{r counts_opfo, echo=F, message=F}
+lc.df %>% filter(!is.na(cat_opfo.5m)) %>% st_set_geometry(NULL) %>%
+  group_by(cat_opfo.5m) %>%
+  summarise(nSpp=n_distinct(SPECIESID), nTubes=n()) %>% 
+  arrange(desc(nTubes)) 
 ```
 
 
 
-
-## Public v. structured samples: By habitat
-```{r ps_opfo_accum, echo=F, message=F, warning=F}
-s_opfo.spp <- ant$str %>% st_set_geometry(NULL) %>% 
-  filter(!is.na(Categorie) & !is.na(SPECIESID)) %>%
-  select(TubeNo, Categorie, SPECIESID) %>% mutate(N=1) %>%
-  pivot_wider(names_from=SPECIESID, values_from=N, values_fill=0)
-p_opfo.spp <- lc.df %>% st_set_geometry(NULL) %>% 
-  filter(!is.na(cat_opfo.5m) & !is.na(SPECIESID)) %>%
-  select(TubeNo, cat_opfo.5m, SPECIESID) %>% mutate(N=1) %>%
-  pivot_wider(names_from=SPECIESID, values_from=N, values_fill=0)
-s_acc.ls <- map(sort(unique(s_opfo.spp$Categorie)), 
-              ~try(specaccum(filter(s_opfo.spp, Categorie==.x) %>% 
-                           select(-TubeNo, -Categorie),
-                         "random", 500), silent=T)) %>% 
-  setNames(sort(unique(s_opfo.spp$Categorie)))
-p_acc.ls <- map(sort(unique(p_opfo.spp$cat_opfo.5m)), 
-              ~specaccum(filter(p_opfo.spp, cat_opfo.5m==.x) %>% 
-                           select(-TubeNo, -cat_opfo.5m),
-                         "random", 500)) %>% 
-  setNames(sort(unique(opfo.spp$cat_opfo.5m)))
-
-
-par(mfrow=c(3,5))
-for(i in seq_along(s_acc.ls)) {
-  if(class(s_acc.ls[[i]]) != "try-error") {
-    tube.max <- max(p_acc.ls[[i]]$sites, s_acc.ls[[i]]$sites, na.rm=T)*1.1
-    rich.max <- max(p_acc.ls[[i]]$richness, s_acc.ls[[i]]$richness, na.rm=T)*1.1
-    plot(p_acc.ls[[i]], col=lc_cols[names(p_acc.ls)[i]], lwd=2, lty=3,
-         ci.type="poly", ci.lty=0, xlim=c(0, tube.max), ylim=c(0, rich.max),
-         ci.col=paste0(lc_cols[names(p_acc.ls)[i]], "88"),
-         xlab="Tubes", ylab="Species", main=names(p_acc.ls)[i])
-    plot(s_acc.ls[[i]], col=lc_cols[names(s_acc.ls)[i]], lwd=2, lty=1, 
-         ci.type="poly", ci.lty=0, 
-         ci.col=paste0(lc_cols[names(s_acc.ls)[i]], "88"), add=T)
-    legend("bottomright", c("Str.", "Pub."), lty=c(1,3), lwd=2,
-           col=lc_cols[names(s_acc.ls)[i]], bty="n")
-  }
-}
+## CORINE categories  
+Using the categorizations from the 5m buffer:  
+```{r counts_corine, echo=F, message=F}
+lc.df %>% filter(!is.na(cat_corine.5m)) %>% st_set_geometry(NULL) %>%
+  group_by(cat_corine.5m) %>%
+  summarise(nSpp=n_distinct(SPECIESID), nTubes=n()) %>% 
+  arrange(desc(nTubes))
 ```
+
+For reference:  
+```{r CORINE_legend2, echo=F, message=F, warning=F}
+read_csv(paste0(gis_dir, "corine_legend.csv")) %>% 
+  filter(CODE_18 %in% unique(corine$CODE_18)) %>%
+  select(Original) %>% rename(Category=Original)
+```
+
+
+
+## Land use categories  
+Using the categorizations from the 5m buffer:  
+```{r counts_openuse, echo=F, message=F}
+lc.df %>% filter(!is.na(cat_open_use.5m)) %>% st_set_geometry(NULL) %>%
+  group_by(cat_open_use.5m) %>%
+  summarise(nSpp=n_distinct(SPECIESID), nTubes=n()) %>% 
+  arrange(desc(nTubes))
+```
+
 
 
 
