@@ -67,10 +67,14 @@ ant$pub <- ant$pub %>%
 ```
 
 ```{r VD_map, echo=FALSE}
-ggplot(ant$pub) + geom_sf(data=VD) + 
-  geom_sf(shape=1, colour="cadetblue", size=0.5, alpha=0.5) +
+ant$pub %>%
+  mutate(coord_system=if_else(is.na(LONGITUDE), "Swiss", "Decimal degrees")) %>%
+  ggplot() + geom_sf(data=VD) +
+  geom_sf(aes(colour=coord_system), shape=1, size=0.5, alpha=0.7) +
   scalebar(data=VD_raw, dist=10, dist_unit="km", transform=F, 
            location="bottomleft", st.size=3, border.size=0.2) + 
+  scale_colour_manual("Coordinate system", values=c("#984ea3", "#4daf4a"),
+                      guide=guide_legend(override.aes=list(size=1, alpha=1))) +
   labs(title="Opération Fourmis Public Inventory", x="", y="")
 ```
 
@@ -114,7 +118,7 @@ knitr::kable(best_prec.df %>% adorn_pct_formatting(),
 ggplot(best_prec.df, aes(factor(Max_prec), percent)) + 
   geom_hline(yintercept=0, size=0.3, colour="grey30") +
   geom_bar(stat="identity", colour="grey30", size=0.3) + 
-  labs(x="Decimal places reported", y="Proportion of lat/lon tubes")
+  labs(x="Decimal places reported", y="Proportion of dec. deg. tubes")
 ```
 
 Typically, smartphones are accurate under good conditions to about [5m](https://www.gps.gov/systems/gps/performance/accuracy/) in radius, with worse performance around buildings, bridges, trees, etc. It therefore seems likely that coordinates with >5 decimal places are overestimating precision. More importantly, the 5.5% of locations with fewer than 4 should not be taken as-is with a high degree of confidence. Again, this metric isn't possible with the locations recorded with the Swiss coordinate system (2938 tubes: 43%), but it seems reasonable that the distribution of precision would be roughly similar.
