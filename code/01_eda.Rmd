@@ -11,6 +11,8 @@ output:
   html_notebook:
     theme: spacelab
     toc: yes
+editor_options: 
+  chunk_output_type: console
 ---
 
 This notebook explores the Opération Fourmis public inventory data and summarises it across a few different potential variables of interest.  
@@ -21,15 +23,21 @@ This notebook explores the Opération Fourmis public inventory data and summaris
 # Overview  
 The coordinates associated with the public inventory data are probably approximately accurate overall. My concern is that even relatively minor inaccuracies in the coordinates will cause a lot of misalignment between the local GIS layers and where the ants were actually collected. Even with ideal location recording methods and conditions, the GPS on devices like smartphones typically have a precision of about ± 5m. Before assigning habitat or land use categories to the collections, we need to know how reliable that is as a method, and constrain the questions and analyses accordingly.
 
-```{r setup, include=FALSE, message=FALSE, warning=FALSE}
+```{r setup}
+# set directory for knitr as main project directory
+knitr::opts_knit$set(root.dir=rprojroot::find_rstudio_root_file())
+```
+
+
+```{r setup_workspace, include=FALSE, message=FALSE, warning=FALSE}
 # libraries, functions, directories
 library(tidyverse); library(sf); library(ggsn); library(ggforce); 
 library(janitor); library(vegan)
 theme_set(theme_bw() + theme(panel.grid.minor=element_blank())); 
-opfo_dir <- "~/Documents/unil/opfo_main/1_opfo/"
-gis_dir <- "~/Documents/unil/opfo_main/2_gis/data/VD_21781/"
+opfo_dir <- "../1_opfo/"
+gis_dir <- "../2_gis/data/VD_21781/"
 walk(paste0(opfo_dir, "code/", c("lc_cols", "00_fn"), ".R"), source)
-source("../code/00_fn.R")
+source("code/00_fn.R")
 buffer_col <- c('10m'="#b15928", '5m'="#1f78b4", "Point"="grey30", "Vaud"="#238443")
 
 # GIS data
