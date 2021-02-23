@@ -48,6 +48,7 @@ gis_dir <- "../2_gis/data/VD_21781/"
 walk(paste0(opfo_dir, "code/", c("lc_cols", "00_fn"), ".R"), source)
 source("code/00_fn.R")
 buffer_col <- c('10m'="#b15928", '5m'="#1f78b4", "Point"="grey30", "Vaud"="#238443")
+dataset_col <- c("public"="#1f78b4", "structured"="#7b3294", "Vaud"="#238443")
 
 # GIS data
 VD_pop <- read_csv(paste0(gis_dir, "VD_2019_popCommune.csv"))
