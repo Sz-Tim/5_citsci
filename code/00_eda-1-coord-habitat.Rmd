@@ -1,5 +1,6 @@
 ---
 title: "Opération Fourmis Public Inventory EDA"
+subtitle: "Coordinates and habitats with a focus on uncertainty"
 author: "Tim Szewczyk"
 output:
   html_document:
