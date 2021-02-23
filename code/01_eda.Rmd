@@ -136,7 +136,7 @@ Typically, smartphones are accurate under good conditions to about [5m](https://
 ## Filtering  
 For extracting local conditions based on point locations, it seems reasonable to buffer all points with 5-10m, with the local habitat or land use type assigned as the dominant category within the buffer. The buffer should not affect distance to nearest road, aside from reducing most distances by a uniform amount and reducing points with distances less than the buffer radius to 0m. 
 
-It is also a good idea to remove tubes with `GEOPRECISION == "extrapolé mauvais"` and possibly `"extrapolé (base tube précédent)"`, `"extrapolé (église par défaut)"`, `"extrapolé (gare par défaut)"`, `"extrapolé/corrigé (église par défaut)"` as the uncertainty seems likely to be greater than 5-10m. Lastly, tubes with fewer than 3 decimals for the lat/lon coordinates should also be removed for the same reasons. 
+It is also a good idea to remove tubes with `GEOPRECISION == "extrapolé mauvais"` and possibly `"extrapolé (base tube précédent)"`, `"extrapolé (église par défaut)"`, `"extrapolé (gare par défaut)"`, `"extrapolé/corrigé (église par défaut)"` as the uncertainty seems likely to be greater than 5-10m. Lastly, tubes with fewer than 3 decimals for the lat/lon coordinates should also be removed for the same reasons. This should maybe be even more strict.
 
 ```{r filter_observations}
 geo_exclude <- c("extrapolé mauvais", 
@@ -144,11 +144,12 @@ geo_exclude <- c("extrapolé mauvais",
                  "extrapolé (église par défaut)", 
                  "extrapolé (gare par défaut)", 
                  "extrapolé/corrigé (église par défaut)")
+dec_thresh <- 3  # remove lat/lon with 0-3 decimals
 pub_filt <- ant$pub %>% 
   filter(!is.na(GEOPRECISION)) %>%
   filter(!GEOPRECISION %in% geo_exclude) %>%
-  filter(is.na(LATITUDE) | nchar(LATITUDE) > 5) %>% # Swiss coords | Lat decimals
-  filter(is.na(LONGITUDE) | nchar(LONGITUDE) > 4) # Swiss coords | Lon decimals
+  filter(is.na(LATITUDE) | nchar(LATITUDE) >= (dec_thresh+3)) %>% 
+  filter(is.na(LONGITUDE) | nchar(LONGITUDE) >= (dec_thresh+2)) 
 ```
 
 
