@@ -1203,7 +1203,7 @@ Using the categorizations from the 5m buffer, sorted by `nTubes`:
 ```{r counts_opfo, echo=F, message=F}
 lc.df %>% filter(!is.na(cat_opfo.5m)) %>% st_set_geometry(NULL) %>%
   group_by(cat_opfo.5m) %>%
-  summarise(nSpp=n_distinct(SPECIESID), nTubes=n()) %>% 
+  summarise(nSpp=n_distinct(SPECIESID, na.rm=T), nTubes=n()) %>% 
   arrange(desc(nTubes)) 
 ```
 
@@ -1214,7 +1214,7 @@ Using the categorizations from the 5m buffer, sorted by `nTubes`:
 ```{r counts_corine, echo=F, message=F}
 lc.df %>% filter(!is.na(cat_corine.5m)) %>% st_set_geometry(NULL) %>%
   group_by(cat_corine.5m) %>%
-  summarise(nSpp=n_distinct(SPECIESID), nTubes=n()) %>% 
+  summarise(nSpp=n_distinct(SPECIESID, na.rm=T), nTubes=n()) %>% 
   arrange(desc(nTubes)) %>% ungroup %>%
   left_join(., 
             read_csv(paste0(gis_dir, "corine_legend.csv"),
@@ -1233,10 +1233,399 @@ Using the categorizations from the 5m buffer, sorted by `nTubes`:
 ```{r counts_openuse, echo=F, message=F}
 lc.df %>% filter(!is.na(cat_open_use.5m)) %>% st_set_geometry(NULL) %>%
   group_by(cat_open_use.5m) %>%
-  summarise(nSpp=n_distinct(SPECIESID), nTubes=n()) %>% 
+  summarise(nSpp=n_distinct(SPECIESID, na.rm=T), nTubes=n()) %>% 
   arrange(desc(nTubes))
 ```
 
 
 
+
+
+
+
+----------
+
+# Structured sample comparisons 
+
+For the public inventory dataset, we'll use the categorizations from the 5m buffers. The geolocations of the structured inventory are highly reliable since they were carefully placed to align with the habitat layer. We can thus use the point locations directly. **However** this should be updated depending on the question: currently, only the *detections* from the structured samples are included, as if each tube were independent and as if the plots without detections did not exist. If the goal is to compare the ants, this is fine. If it is to compare sampling effort, it should be changed to use the plots instead of the tubes.  
+```{r str_hab_calculate, echo=F, message=F, warning=F}
+str.df <- ant$str %>%
+  # CORINE habitats: categorization, max proportional cover, number of types
+  full_join(., st_join(ant$str %>% select(TubeNo), 
+                       corine %>% select(CODE_18)) %>% 
+              st_set_geometry(NULL) %>% 
+              rename(cat_corine.pt=CODE_18), 
+            by="TubeNo") %>%
+  # Land uses: categorization, max proportional cover, number of types
+  full_join(., st_join(ant$str %>% select(TubeNo), 
+                          open_use %>% select(affectatio)) %>% 
+              st_set_geometry(NULL) %>% 
+              rename(cat_open_use.pt=affectatio), 
+            by="TubeNo") %>%
+  mutate(across(starts_with("cat_"), as.character)) %>%
+  mutate(use_paturage.pt=cat_open_use.pt %in% landuse_paturage,
+         use_jardin.pt=cat_open_use.pt %in% landuse_jardin,
+         corine_urban.pt=grepl("^1", cat_corine.pt),
+         corine_urbanCont.pt=grepl("111", cat_corine.pt),
+         bldg_nearest=st_nearest_feature(., bldg),
+         bldg_dist=st_distance(., bldg[bldg_nearest,], by_element=T),
+         road_nearest=st_nearest_feature(., roads),
+         road_dist=st_distance(., roads[road_nearest,], by_element=T),
+         road_nearest_type=roads$fclass[road_nearest])
+```
+```{r ant_all, echo=F, message=F, warning=F}
+all.df <- bind_rows(
+  lc.df %>% select(TubeNo, SPECIESID, SampleDate, GEOPRECISION, 
+                   contains(c(".5m", "bldg", "road"))) %>%
+    rename_with(~sub("[.]5m", "", .x)) %>%
+    mutate(Dataset="public"),
+  str.df %>% rename(cat_opfo.pt=Categorie) %>%
+    select(TubeNo, SPECIESID, SampleDate, 
+                   contains(c(".pt", "bldg", "road"))) %>%
+    rename_with(~sub("[.]pt", "", .x)) %>%
+    mutate(Dataset="structured")
+)
+```
+
+
+
+## Habitat distributions {.tabset .tabset-fade}
+These plots compare the composition of the ant samples in each dataset to the composition of the habitats in Vaud. Thus, they show some combination of 1) discrepancy between the composition of the sampling effort compared to the composition of Vaud, and 2) discrepancy in the ant densities across habitats compared to Vaud. For the public samples, we don't know the weight of each component, though almost certainly 1) is more important. For the structured points, we could standardize since we know the sampling effort.  
+
+### OpFo  
+The tubes in the structured samples are qualitatively more similar to Vaud than are the public samples. The largest discrepancies seem to be that the structured samples over-represent *Prairie Sèche* and *Autre*, and under-represent *Forêt Conifère* and *ZoneConstruite*. We could test whether these differences are significant (overall $\chi^2$ is significant). 
+```{r opfo_all_comp, echo=F, message=F, warning=F}
+bind_rows(lc %>% st_set_geometry(NULL) %>% group_by(Categorie) %>%
+            summarise(Area=sum(area)) %>% ungroup %>%
+            mutate(prop=as.numeric(Area/sum(Area)),
+                   Dataset="Vaud") %>%
+            rename(cat_opfo=Categorie) %>%
+            select(Dataset, cat_opfo, prop),
+          all.df %>% st_set_geometry(NULL) %>% group_by(Dataset, cat_opfo) %>%
+            summarise(N=n()) %>% ungroup %>%
+            filter(!is.na(cat_opfo)) %>%
+            group_by(Dataset) %>% mutate(prop=N/sum(N)) %>% ungroup %>%
+            select(Dataset, cat_opfo, prop)) %>% 
+  filter(cat_opfo %in% unique(all.df$cat_opfo)) %>%
+  arrange(cat_opfo, Dataset) %>%
+  ggplot(aes(cat_opfo, prop, fill=Dataset)) + 
+    geom_bar(position="dodge", stat="identity", colour="grey30", size=0.3) +
+  scale_y_continuous(labels=scales::percent_format()) + 
+  scale_fill_manual(values=dataset_col) +
+  labs(x="", y="Percent coverage", title="OpFo habitat categories") +
+  theme(axis.text.x=element_text(angle=270, hjust=0, vjust=0.5, size=6),
+        legend.title=element_text(size=9),
+        legend.text=element_text(size=7),
+        legend.key.width=unit(0.5, "cm"),
+        legend.key.height=unit(0.5, "cm"), 
+        legend.position="bottom")
+```
+
+
+### CORINE  
+Again, the structured samples are generally more similar to Vaud than are the public samples. The biggest discrepancy between the structured samples and Vaud are over-representation of *321: Natural grasslands* and *243: Agricultural land with significant areas of natural vegetation*, and under-representation of *112: Discontinuous urban fabric*, *211: Non-irrigated arable land*, and *312: Coniferous forest*. This largely matches with the OpFo categories, but with land that probably corresponds with pastures (*321*, *243*) separated from land that probably correspondss more with crop (*211*). **BUT I NEED TO LOOK TO SEE HOW THESE CATEGORIES ALIGN ACROSS DATASETS**.  
+```{r corine_all_comp, echo=F, message=F, warning=F}
+bind_rows(corine %>% st_set_geometry(NULL) %>% group_by(CODE_18) %>%
+            summarise(Area=sum(area)) %>% ungroup %>%
+            mutate(prop=as.numeric(Area/sum(Area)),
+                   Dataset="Vaud") %>%
+            rename(cat_corine=CODE_18) %>%
+            select(Dataset, cat_corine, prop),
+          all.df %>% st_set_geometry(NULL) %>% group_by(Dataset, cat_corine) %>%
+            summarise(N=n()) %>% ungroup %>%
+            filter(!is.na(cat_corine)) %>%
+            group_by(Dataset) %>% mutate(prop=N/sum(N)) %>% ungroup %>%
+            select(Dataset, cat_corine, prop)) %>% 
+  filter(cat_corine %in% unique(all.df$cat_corine)) %>%
+  arrange(cat_corine, Dataset) %>%
+  left_join(., 
+            read_csv(paste0(gis_dir, "corine_legend.csv"),
+                     col_types=c(CODE_18="c")),
+            by=c("cat_corine"="CODE_18")) %>%
+  mutate(Original=str_wrap(Original, 40)) %>%
+  ggplot(aes(Original, prop, fill=Dataset)) + 
+    geom_bar(position="dodge", stat="identity", colour="grey30", size=0.3) +
+  scale_y_continuous(labels=scales::percent_format()) + 
+  scale_fill_manual(values=dataset_col) +
+  labs(x="", y="Percent coverage", title="CORINE land cover categories") +
+  theme(axis.text.x=element_text(angle=270, hjust=0, vjust=0.5, size=6),
+        legend.title=element_text(size=9),
+        legend.text=element_text(size=7),
+        legend.key.width=unit(0.5, "cm"),
+        legend.key.height=unit(0.5, "cm"), 
+        legend.position="bottom")
+```
+
+
+### VD land use  
+The structured samples include more samples from crop. Samples from *611 Prairies extensive* are quite over-represented. In fact, the majority of prairies and pastures seem to be over-represented (*601*-*623*). This obviously makes sense if ants are more likely to be found in pastures and prairies than cropland.
+```{r VD_all_comp, echo=F, message=F, warning=F}
+bind_rows(open_use %>% st_set_geometry(NULL) %>% group_by(affectatio) %>%
+            summarise(Area=sum(area)) %>% ungroup %>%
+            mutate(prop=as.numeric(Area/sum(Area)),
+                   Dataset="Vaud") %>%
+            rename(cat_open_use=affectatio) %>%
+            select(Dataset, cat_open_use, prop),
+          all.df %>% st_set_geometry(NULL) %>% group_by(Dataset, cat_open_use) %>%
+            summarise(N=n()) %>% ungroup %>%
+            filter(!is.na(cat_open_use)) %>%
+            group_by(Dataset) %>% mutate(prop=N/sum(N)) %>% ungroup %>%
+            select(Dataset, cat_open_use, prop)) %>% 
+  filter(cat_open_use %in% unique(all.df$cat_open_use)) %>%
+  arrange(cat_open_use, Dataset) %>%
+  ggplot(aes(cat_open_use, prop, fill=Dataset)) + 
+    geom_bar(position="dodge", stat="identity", colour="grey30", size=0.3) +
+  scale_y_continuous(labels=scales::percent_format()) + 
+  scale_fill_manual(values=dataset_col) +
+  labs(x="", y="Percent coverage", title="Vaud land use categories") +
+  theme(axis.text.x=element_text(angle=270, hjust=0, vjust=0.5, size=6),
+        legend.title=element_text(size=9),
+        legend.text=element_text(size=7),
+        legend.key.width=unit(0.5, "cm"),
+        legend.key.height=unit(0.5, "cm"), 
+        legend.position="bottom")
+```
+
+
+
+
+
+----------
+
+
+
+
+# Collectors {.tabset .tabset-fade}  
+The `COLLECTORFIELDNUMBER` column identifies each collector. The group field trips were entered as a single collection (e.g., `COLLECTORFIELDNUMBER == "collector_formation1")`. We could look at the impact of including these field trips (direct: tubes collected; indirect: proportion of participants sending in additional samples, etc), and also the impact of including a small number of experts, comparing them to the rest of the citizen science effort. **DO WE KNOW THE COLLECTOR IDs FOR THE EXPERTS?**  
+
+## Collector summary table  
+The number of tubes and species per collector, sorted by the number of species collected, `S`:  
+```{r collector_table, echo=F, message=F, warning=F}
+lc.df %>% group_by(COLLECTORFIELDNUMBER) %>% st_set_geometry(NULL) %>% 
+  summarise(N=n(), S=n_distinct(SPECIESID, na.rm=T)) %>% 
+  ungroup %>% arrange(desc(S))
+```
+
+
+## Collector accumulation curves  
+We could categorize the `COLLECTORFIELDNUMBER` as *group trip*, *expert*, *public*. For now, we can call anyone who collected >20 species an expert. I imagine the names are somewhere, and maybe we also call anyone in the DEE an expert?  
+```{r collector_categories, echo=F, message=F, warning=F}
+experts <- (lc.df %>% st_set_geometry(NULL) %>% 
+              group_by(COLLECTORFIELDNUMBER) %>%
+              summarise(S=n_distinct(SPECIESID, na.rm=T)) %>% 
+              filter(S > 20 & 
+                       !grepl('formation|lancement', COLLECTORFIELDNUMBER))
+            )$COLLECTORFIELDNUMBER
+cat("Experts:\n  ", paste(experts, collapse=", "))
+lc.df <- lc.df %>%
+  mutate(cat_collector=case_when(COLLECTORFIELDNUMBER %in% experts ~ "expert",
+                                 grepl('formation|lancement', 
+                                       COLLECTORFIELDNUMBER) ~ "group", 
+                                 TRUE ~ "public"))
+```
+
+```{r collector_accumulation, echo=F, message=F, warning=F}
+coll.spp <- lc.df %>% st_set_geometry(NULL) %>% 
+  filter(!is.na(cat_collector) & !is.na(SPECIESID)) %>%
+  select(TubeNo, cat_collector, SPECIESID) %>% mutate(N=1) %>%
+  pivot_wider(names_from=SPECIESID, values_from=N, values_fill=0)
+acc.ls <- map(sort(unique(coll.spp$cat_collector)), 
+              ~specaccum(filter(coll.spp, cat_collector==.x) %>% 
+                           select(-TubeNo, -cat_collector),
+                         "random", 500)) %>% 
+  setNames(sort(unique(coll.spp$cat_collector)))
+coll_cols <- c('expert'="#d95f02", 'group'="#1b9e77", 'public'="#7570b3")
+
+plot(acc.ls[[1]], col=coll_cols[names(acc.ls)[1]], lwd=2, 
+     ci.type="poly", ci.lty=0, xlim=c(0, 5000), ylim=c(0, 80),
+     ci.col=paste0(coll_cols[names(acc.ls)[1]], "88"),
+     xlab="Tubes", ylab="Species", main="Collector categories")
+for(i in 2:length(acc.ls)) {
+  plot(acc.ls[[i]], col=coll_cols[names(acc.ls)[i]], lwd=2, add=T,
+       ci.type="poly", ci.lty=0, 
+     ci.col=paste0(coll_cols[names(acc.ls)[i]], "88"))
+}
+legend("bottomright", names(acc.ls), lty=1, lwd=2, col=coll_cols[names(acc.ls)], 
+       bty="n")
+```
+
+```{r collector_accumulation_byCollector, echo=F, message=F, warning=F}
+coll.spp <- lc.df %>% st_set_geometry(NULL) %>% 
+  filter(!is.na(cat_collector) & !is.na(SPECIESID)) %>%
+  group_by(COLLECTORFIELDNUMBER, cat_collector, SPECIESID) %>%
+  summarise(N=n()) %>% ungroup %>%
+  pivot_wider(names_from=SPECIESID, values_from=N, values_fill=0)
+acc.ls <- map(sort(unique(coll.spp$cat_collector)), 
+              ~specaccum(filter(coll.spp, cat_collector==.x) %>% 
+                           select(-COLLECTORFIELDNUMBER, -cat_collector),
+                         "random", 500)) %>% 
+  setNames(sort(unique(coll.spp$cat_collector)))
+coll_cols <- c('expert'="#d95f02", 'group'="#1b9e77", 'public'="#7570b3")
+
+plot(acc.ls[[1]], col=coll_cols[names(acc.ls)[1]], lwd=2, 
+     ci.type="poly", ci.lty=0, xlim=c(0, 600), ylim=c(0, 80),
+     ci.col=paste0(coll_cols[names(acc.ls)[1]], "88"),
+     xlab="Collectors", ylab="Species", main="Collector categories")
+for(i in 2:length(acc.ls)) {
+  plot(acc.ls[[i]], col=coll_cols[names(acc.ls)[i]], lwd=2, add=T,
+       ci.type="poly", ci.lty=0, 
+     ci.col=paste0(coll_cols[names(acc.ls)[i]], "88"))
+}
+legend("bottomright", names(acc.ls), lty=1, lwd=2, col=coll_cols[names(acc.ls)], 
+       bty="n")
+```
+
+
+## Collectors by date  
+
+How did the number of collectors change across the year?  
+```{r collectors_byDate, echo=F, warning=F, message=F}
+lc.df %>% st_set_geometry(NULL) %>% 
+  group_by(DATECOLLECTION, cat_collector) %>% 
+  summarise(N=n_distinct(COLLECTORFIELDNUMBER)) %>% 
+  ggplot(aes(DATECOLLECTION, N, colour=cat_collector)) + geom_point() +
+  scale_colour_manual(values=coll_cols) + 
+  scale_x_date(limits=c(as.Date("2019-03-01"), as.Date("2020-01-01"))) +
+  labs(x="Date", y="Number of collectors", title="Collectors per day")
+lc.df %>% st_set_geometry(NULL) %>% 
+  mutate(week=lubridate::week(DATECOLLECTION)) %>%
+  group_by(week, cat_collector) %>% 
+  summarise(N=n_distinct(COLLECTORFIELDNUMBER)) %>% 
+  mutate(date=lubridate::ymd("2019-01-01") + lubridate::weeks(week)) %>%
+  ggplot(aes(date, N, colour=cat_collector)) + geom_point() + geom_line() + 
+  scale_colour_manual(values=coll_cols) + 
+  scale_x_date(limits=c(as.Date("2019-03-01"), as.Date("2020-01-01"))) +
+  labs(x="Date", y="Number of collectors", title="Collectors per week")
+```
+
+
+## New collectors by date  
+
+How did the number of new collectors change across the year?  
+```{r new_collectors_byDate, echo=F, warning=F, message=F}
+lc.df %>% st_set_geometry(NULL) %>% 
+  group_by(cat_collector, COLLECTORFIELDNUMBER) %>% 
+  slice_min(DATECOLLECTION) %>%
+  group_by(DATECOLLECTION, cat_collector) %>%
+  summarise(N=n_distinct(COLLECTORFIELDNUMBER)) %>% 
+  ggplot(aes(DATECOLLECTION, N, colour=cat_collector)) + geom_point() +
+  scale_colour_manual(values=coll_cols) + 
+  scale_x_date(limits=c(as.Date("2019-03-01"), as.Date("2020-01-01"))) +
+  labs(x="Date", y="Number of new collectors", title="New collectors per day")
+lc.df %>% st_set_geometry(NULL) %>% 
+  mutate(week=lubridate::week(DATECOLLECTION)) %>%
+  group_by(cat_collector, COLLECTORFIELDNUMBER) %>% 
+  slice_min(week) %>%
+  group_by(week, cat_collector) %>%
+  summarise(N=n_distinct(COLLECTORFIELDNUMBER)) %>% 
+  mutate(date=lubridate::ymd("2019-01-01") + lubridate::weeks(week)) %>%
+  ggplot(aes(date, N, colour=cat_collector)) + geom_point() + geom_line() + 
+  scale_colour_manual(values=coll_cols) + 
+  scale_x_date(limits=c(as.Date("2019-03-01"), as.Date("2020-01-01"))) +
+  labs(x="Date", y="Number of new collectors", title="New collectors per week")
+```
+
+
+
+## Collection dates {.tabset}  
+The `DATECOLLECTION` column records the collection date reported by the collector. I'm not sure if it would be possible to look for effects of the group collecting trips or news stories. There isn't anything obvious by day, but maybe by week... There are a couple of errors in the dates (year = 2018: excluded from plots). 
+
+### Number of tubes   
+
+```{r coll_dates_N, echo=F, warning=F, message=F}
+lc.df %>% st_set_geometry(NULL) %>% 
+  group_by(DATECOLLECTION, cat_collector) %>% 
+  summarise(N=n(), S=n_distinct(SPECIESID, na.rm=T)) %>% 
+  ggplot(aes(DATECOLLECTION, N, colour=cat_collector)) + geom_point() +
+  scale_colour_manual(values=coll_cols) + 
+  scale_x_date(limits=c(as.Date("2019-03-01"), as.Date("2020-01-01"))) +
+  labs(x="Date", y="Number of tubes", title="Tubes per day")
+lc.df %>% st_set_geometry(NULL) %>% 
+  mutate(week=lubridate::week(DATECOLLECTION)) %>%
+  group_by(week, cat_collector) %>% 
+  summarise(N=n(), S=n_distinct(SPECIESID, na.rm=T)) %>% 
+  mutate(date=lubridate::ymd("2019-01-01") + lubridate::weeks(week)) %>%
+  ggplot(aes(date, N, colour=cat_collector)) + geom_point() + geom_line() +
+  scale_colour_manual(values=coll_cols) + 
+  labs(x="Date", y="Number of tubes", title="Summarised by week")
+```
+
+### Number of species  
+
+```{r coll_dates_S, echo=F, warning=F, message=F}
+lc.df %>% st_set_geometry(NULL) %>% 
+  group_by(DATECOLLECTION, cat_collector) %>% 
+  summarise(N=n(), S=n_distinct(SPECIESID, na.rm=T)) %>% 
+  ggplot(aes(DATECOLLECTION, S, colour=cat_collector)) + geom_point() +
+  scale_colour_manual(values=coll_cols) + 
+  scale_x_date(limits=c(as.Date("2019-03-01"), as.Date("2020-01-01"))) +
+  labs(x="Date", y="Number of species", title="Tubes per day")
+lc.df %>% st_set_geometry(NULL) %>% 
+  mutate(week=lubridate::week(DATECOLLECTION)) %>%
+  group_by(week, cat_collector) %>% 
+  summarise(N=n(), S=n_distinct(SPECIESID, na.rm=T)) %>% 
+  mutate(date=lubridate::ymd("2019-01-01") + lubridate::weeks(week)) %>%
+  ggplot(aes(date, S, colour=cat_collector)) + geom_point() + geom_line() +
+  scale_colour_manual(values=coll_cols) + 
+  labs(x="Date", y="Number of species", title="Summarised by week")
+```
+
+
+
+
+
+
+
+----------  
+
+----------  
+
+
+
+# Notes  
+This will probably include a mix of analyses focused on methodology and analyses focused on ecology. The methodology should address questions that would be relevant to someone who is designing a similar citizen science project. What would we want to know if this were to be run a second time?  
+
+## Citizen science methodology  
+
+- What are the shortfalls in the public collection that could be (or were) filled by the design of the structured samples? Under-representation of habitats or regions, most samples close to buildings/roads, etc?  
+- What is the added value of a small number of expert collectors? Would the results be drastically different with them excluded?  
+- What is the added value of group field trips? Do the collections from those trips add something unique? Did many of the people from the field trips also collect samples afterward? Was there an increase in sampling (tubes or collectors) shortly after? Can't say anything strong, but could be interesting.
+- Anecdotally, there were some local news stories that helped inform the public about it. Is there any data about this? (Do collection dates coincide? Number of tubes, number of new collectors?)
+- What are the biases in the specimens based on taxonomy, morphology, or life history?  
+
+
+## To consider  
+
+- Evaluation of the sampling effort  
+    - Comparison across land cover categories, etc: pub-str-VD  
+    - Comparison across communes, maybe by population  
+    - Comparison by proximity to roads or paths (pub-str)  
+    - Comparison of the mountains vs. the plateau (pub-str)  
+    - Comparison of body size distribution (pub-str)  
+    - Species by number of tubes and number of collectors (e.g., 431 collectors sent in *Lasius niger*)  
+    - Group events vs. individual collectors  
+- Ecological quantities  
+    - Total species/genera detected  
+    - Species accumulation curves  
+    - Composition of species / genera collected  
+    - Anything with invasives?  
+    - Ecological traits of species across datasets?  
+        - Body size distribution  
+        - Nesting type (mounds, twigs, underground, etc)  
+- Gardens in vs. out of urban areas  
+- Pastures across elevations?  
+- Roads and buildings?  
+- Species accumulation
+    - Plots above treat every tube as a separate sample. There are alternatives.  
+    - Structured:  
+        - Tube = sample  
+        - Plot = sample  
+        - Square = sample  
+    - Public:  
+        - Tube = sample  
+        - Collector = sample  
+        - Collector x Date = sample  
+    - Or we could group by administrative units like communes, following Pernat et al 2020.  
+    - I think using *tubes* or *communes* might be the best direct comparison, since aggregating to *plot* will include multiple species per sample, but in a standardized, limited way. Aggregating the public samples to *collector* or *collector x date* will create samples of arbitrary size, which won't be comparable to the structured samples. It could still be interesting to look at accumulation across the number of collectors, though. The `COLLECTORFIELDNUMBER` does include group collections like `formation` and `lancement`, which maybe should be removed in that case.  
+    
 
