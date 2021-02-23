@@ -1,0 +1,69 @@
+---
+title: "Opération Fourmis Public Inventory EDA"
+subtitle: "CORINE and VD land use"
+author: "Tim Szewczyk"
+output:
+  html_document:
+    theme: spacelab
+    df_print: paged
+    toc: yes
+    toc_depth: 2
+    toc_float: true
+  pdf_document:
+    toc: yes
+  html_notebook:
+    theme: spacelab
+    toc: yes
+editor_options: 
+  chunk_output_type: console
+---
+
+
+
+# Overview  
+
+Based on `code/00_eda-coord-habitat.Rmd`, we have decided to use the coarser CORINE dataset merged with the Vaud land use dataset to specify land use within open areas. The legends will both be aggregated to a smaller number of categories.  
+
+
+
+
+```{r setup, echo=F}
+# set directory for knitr as main project directory
+knitr::opts_knit$set(root.dir=rprojroot::find_rstudio_root_file())
+```
+
+
+```{r setup_workspace, include=FALSE, message=FALSE, warning=FALSE}
+# libraries, functions, directories
+library(tidyverse); library(sf); library(ggsn); library(ggforce); 
+library(janitor); library(vegan)
+theme_set(theme_bw() + theme(panel.grid.minor=element_blank())); 
+opfo_dir <- "../1_opfo/"
+gis_dir <- "../2_gis/data/VD_21781/"
+walk(paste0(opfo_dir, "code/", c("lc_cols", "00_fn"), ".R"), source)
+source("code/00_fn.R")
+buffer_col <- c('10m'="#b15928", '5m'="#1f78b4", "Point"="grey30", "Vaud"="#238443")
+dataset_col <- c("public"="#1f78b4", "structured"="#7b3294", "Vaud"="#238443")
+
+# GIS data
+VD_pop <- read_csv(paste0(gis_dir, "VD_2019_popCommune.csv"))
+VD_raw <- st_read(paste0(gis_dir, "Vaud_boundaries.shp")) %>%
+  filter(!grepl("Lac ", NAME)) %>%
+  select(NAME, BFS_NUMMER) %>%
+  mutate(pop=VD_pop$Population[match(BFS_NUMMER, VD_pop$Code)],
+         area=units::set_units(st_area(.), "km2"), 
+         popDens=pop/area)
+VD <- st_union(VD_raw)
+lc <- st_read(paste0(gis_dir, "lc_21781.shp")) %>% st_set_crs(st_crs(VD)) %>%
+  mutate(area=st_area(.))
+open_use <- st_read(paste0(gis_dir, "open_landuse_21781.shp")) %>%
+  mutate(area=st_area(.))
+corine <- st_read(paste0(gis_dir, "corine_VD_21781.shp")) %>%
+  mutate(area=st_area(.))
+
+# ant data
+ant <- load_ant_data(clean_spp=F, full_pub=T)
+ant$pub <- ant$pub %>%
+  mutate(GENUSID=str_split_fixed(SPECIESID, "_", 2)[,1]) %>%
+  st_join(VD_raw) 
+```
