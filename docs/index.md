@@ -1,49 +1,18 @@
+# Opération Fourmis: Citizen Science Analyses
+
+![img](https://wp.unil.ch/fourmisvaud/files/2019/03/Titre_OrangeViolet.png)
+
+This repository focuses on the public inventory dataset from [Opération Fourmis](https://wp.unil.ch/fourmisvaud/). The links below show the EDA for various topics as the focus of the manuscript is determined.  
+
+----------
+
+
 # EDA  
 
-[test](https://github.com/Sz-Tim/5_citsci/blob/main/docs/00_eda-2-CORINE-VD.html)
+[Locational uncertainty and possible habitat layers](00_eda-1-coord-habitat.html)
 
-<a href="00_eda-2-CORINE-VD.html" title="test html">Test HTML</a>
-
-[test2](00_eda-2-CORINE-VD.html)
+[Combining CORINE with detailed land use](00_eda-2-CORINE-VD.html)
 
 
 
 
-
-## Welcome to GitHub Pages
-
-You can use the [editor on GitHub](https://github.com/Sz-Tim/5_citsci/edit/main/docs/index.md) to maintain and preview the content for your website in Markdown files.
-
-Whenever you commit to this repository, GitHub Pages will run [Jekyll](https://jekyllrb.com/) to rebuild the pages in your site, from the content in your Markdown files.
-
-### Markdown
-
-Markdown is a lightweight and easy-to-use syntax for styling your writing. It includes conventions for
-
-```markdown
-Syntax highlighted code block
-
-# Header 1
-## Header 2
-### Header 3
-
-- Bulleted
-- List
-
-1. Numbered
-2. List
-
-**Bold** and _Italic_ and `Code` text
-
-[Link](url) and ![Image](src)
-```
-
-For more details see [GitHub Flavored Markdown](https://guides.github.com/features/mastering-markdown/).
-
-### Jekyll Themes
-
-Your Pages site will use the layout and styles from the Jekyll theme you have selected in your [repository settings](https://github.com/Sz-Tim/5_citsci/settings). The name of this theme is saved in the Jekyll `_config.yml` configuration file.
-
-### Support or Contact
-
-Having trouble with Pages? Check out our [documentation](https://docs.github.com/categories/github-pages-basics/) or [contact support](https://support.github.com/contact) and we’ll help you sort it out.
