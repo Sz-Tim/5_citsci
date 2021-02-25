@@ -2,7 +2,9 @@
 
 [test](https://github.com/Sz-Tim/5_citsci/blob/main/docs/00_eda-2-CORINE-VD.html)
 
-[test2](docs/00_eda-2-CORINE-VD.html)
+<a href="00_eda-2-CORINE-VD.html" title="test html">Test HTML</a>
+
+[test2](00_eda-2-CORINE-VD.html)
 
 
 
