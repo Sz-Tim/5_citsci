@@ -1,3 +1,13 @@
+# EDA  
+
+[test](https://github.com/Sz-Tim/5_citsci/blob/main/docs/00_eda-2-CORINE-VD.html)
+
+[test2](docs/00_eda-2-CORINE-VD.html)
+
+
+
+
+
 ## Welcome to GitHub Pages
 
 You can use the [editor on GitHub](https://github.com/Sz-Tim/5_citsci/edit/main/docs/index.md) to maintain and preview the content for your website in Markdown files.
