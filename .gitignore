@@ -6,7 +6,6 @@
 .RData
 *.nb.html
 .DS_Store
-*.html
 
 # User-specific files
 .Ruserdata
