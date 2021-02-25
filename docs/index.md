@@ -10,10 +10,11 @@ This repository focuses on the public inventory dataset from [Opération Fourmis
 
 ## EDA & Munging  
 
-[Coordinates and habitat layers](00_eda-1-coord-habitat.html)
+Exploratory data analysis and data munging were performed in R Notebooks. The resulting html output is organized into the following pages:  
 
-[Combining CORINE with land use](00_eda-2-CORINE-VD.html)
+- [Coordinates and habitat layers](00_eda-1-coord-habitat.html)  
+- [Combining CORINE with land use](00_eda-2-CORINE-VD.html)  
+- [Ant traits](00_eda-3-traits.html)  
 
-[Ant traits](00_eda-3-traits.html)
 
 
