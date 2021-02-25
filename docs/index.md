@@ -5,7 +5,7 @@
 
 This repository focuses on the public inventory dataset from [Opération Fourmis](https://wp.unil.ch/fourmisvaud/). The links below show the EDA for various topics as the focus of the manuscript is determined.  
 
-----------
+
 
 
 ## EDA & Munging  
