@@ -1,0 +1,76 @@
+---
+title: "Opération Fourmis Public Inventory EDA"
+subtitle: "Species-level traits"
+author: "Tim Szewczyk"
+output:
+  html_document:
+    theme: spacelab
+    df_print: paged
+    anchor_sections: TRUE
+    toc: yes
+    toc_depth: 2
+    toc_float: true
+  pdf_document:
+    toc: yes
+  html_notebook:
+    theme: spacelab
+    toc: yes
+editor_options: 
+  chunk_output_type: console
+---
+
+
+# Overview  
+One thing we're interested in is looking at traits of the species collected in the public inventory. We could either compare traits across habitats, or between the public and structured datasets, or both. 
+
+
+```{r setup, echo=F}
+# set directory for knitr as main project directory
+knitr::opts_knit$set(root.dir=rprojroot::find_rstudio_root_file())
+```
+
+```{r setup_workspace, include=FALSE, message=FALSE, warning=FALSE}
+# libraries, functions, directories
+library(tidyverse)
+theme_set(theme_bw() + theme(panel.grid.minor=element_blank()))
+```
+
+
+
+
+----------
+
+
+
+
+# Species list  
+
+Assuming no red flags in non-*Formica* genera, we'll use the morphological identifications with the exception of *Tetramorium* and *Tapinoma*. This is the species list, with the number of tubes and the number of collectors.  
+```{r}
+
+```
+
+
+
+
+----------
+
+
+
+
+# Trait data sources  
+
+There are several databases we could use to aggregate trait data. This could be a time consuming piece, which might involve help from Nora. 
+
+## AntWeb  
+
+
+## GlobalAnts  
+
+
+## AntProfiler  
+
+
+## Seifert  
+
+
