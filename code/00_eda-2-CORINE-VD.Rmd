@@ -6,6 +6,7 @@ output:
   html_document:
     theme: spacelab
     df_print: paged
+    anchor_sections: TRUE
     toc: yes
     toc_depth: 2
     toc_float: true
@@ -18,31 +19,27 @@ editor_options:
   chunk_output_type: console
 ---
 
+# Overview
 
+Based on the [locational uncertainty EDA](00_eda-1-coord-habitat.html#Overview), we have decided to use a dataset that merges [the CORINE and land use datasets](00_eda-1-coord-habitat.html#Habitat_datasets) using the coarser CORINE dataset where the Vaud land use dataset is unavailable. The spatial detail of the OpFo dataset (created for the structured sampling design based on detailed maps from the Swiss government) resulted in a lot of [uncertainty in sample categorization](00_eda-1-coord-habitat.html#Habitat:_Points__buffers), even assuming best GPS recording practices by the collectors. The other two datasets were much less ambiguous, with 10m buffers largely falling into a single category. Thus, we will try to use the greater thematic accuracy of the land use dataset where possible, with the CORINE dataset as essentially the baseline.
 
-# Overview  
+This script first explores the union of the two datasets, where the detailed land use category is assigned if available, and the CORINE category if it is not. For analyses, the joint legend will be simplified to a smaller number of categories.
 
-Based on `code/00_eda-coord-habitat.Rmd`, we have decided to use the coarser CORINE dataset merged with the Vaud land use dataset to specify land use within open areas. The legends will both be aggregated to a smaller number of categories.  
-
-
-
+The union of CORINE and the Vaud land use layers was performed in QGIS 3.4.11.
 
 ```{r setup, echo=F}
 # set directory for knitr as main project directory
 knitr::opts_knit$set(root.dir=rprojroot::find_rstudio_root_file())
 ```
 
-
 ```{r setup_workspace, include=FALSE, message=FALSE, warning=FALSE}
 # libraries, functions, directories
-library(tidyverse); library(sf); library(ggsn); library(ggforce); 
-library(janitor); library(vegan)
+library(tidyverse); library(sf); library(ggforce); library(janitor)
 theme_set(theme_bw() + theme(panel.grid.minor=element_blank())); 
 opfo_dir <- "../1_opfo/"
 gis_dir <- "../2_gis/data/VD_21781/"
 walk(paste0(opfo_dir, "code/", c("lc_cols", "00_fn"), ".R"), source)
 source("code/00_fn.R")
-buffer_col <- c('10m'="#b15928", '5m'="#1f78b4", "Point"="grey30", "Vaud"="#238443")
 dataset_col <- c("public"="#1f78b4", "structured"="#7b3294", "Vaud"="#238443")
 
 # GIS data
@@ -54,16 +51,142 @@ VD_raw <- st_read(paste0(gis_dir, "Vaud_boundaries.shp")) %>%
          area=units::set_units(st_area(.), "km2"), 
          popDens=pop/area)
 VD <- st_union(VD_raw)
-lc <- st_read(paste0(gis_dir, "lc_21781.shp")) %>% st_set_crs(st_crs(VD)) %>%
-  mutate(area=st_area(.))
-open_use <- st_read(paste0(gis_dir, "open_landuse_21781.shp")) %>%
-  mutate(area=st_area(.))
-corine <- st_read(paste0(gis_dir, "corine_VD_21781.shp")) %>%
-  mutate(area=st_area(.))
+lc_VD <- st_read(paste0(gis_dir, "corine_open_use_21781.shp"), 
+                 stringsAsFactors=F) 
 
 # ant data
 ant <- load_ant_data(clean_spp=F, full_pub=T)
 ant$pub <- ant$pub %>%
   mutate(GENUSID=str_split_fixed(SPECIESID, "_", 2)[,1]) %>%
   st_join(VD_raw) 
+```
+
+------------------------------------------------------------------------
+
+# Filter points
+
+Using the method described in [the coordinate uncertainty EDA](00_eda-1-coord-habitat.html#Filtering), points with clearly unreliable coordinates are removed. We assume that the remaining coordinates were collected under good GPS conditions, with the location recorded where the ants were collected. We use a 5m buffer to account for the limitations of GPS coordinates collected by smartphones.
+
+```{r filter_observations}
+geo_exclude <- c("extrapolé mauvais", 
+                 "extrapolé (base tube précédent)", 
+                 "extrapolé (église par défaut)", 
+                 "extrapolé (gare par défaut)", 
+                 "extrapolé/corrigé (église par défaut)")
+dec_thresh <- 4  # remove lat/lon with 0-3 decimals
+pub_filt <- ant$pub %>% 
+  filter(!is.na(GEOPRECISION)) %>%
+  filter(!GEOPRECISION %in% geo_exclude) %>%
+  filter(is.na(LATITUDE) | nchar(LATITUDE) >= (dec_thresh+3)) %>% 
+  filter(is.na(LONGITUDE) | nchar(LONGITUDE) >= (dec_thresh+2)) 
+```
+
+```{r buffer_creation}
+pub.5m <- pub_filt %>% st_buffer(dist=5)
+```
+
+------------------------------------------------------------------------
+
+# Land cover dataset
+
+There are `r n_distinct(lc_VD$cat_full)` categories in Vaud after overlaying the Vaud land use dataset with the CORINE dataset, prioritizing the Vaud land use dataset. First, we can just look at the distribution within Vaud for categories comprising at least 0.5% of the area.
+
+```{r cat_full_distribution, echo=F, message=F}
+lc_VD %>% st_set_geometry(NULL) %>%
+  group_by(cat_full) %>% summarise(tot_area=as.numeric(sum(area))) %>%
+  ungroup %>% mutate(prop_area=tot_area/sum(tot_area)) %>%
+  filter(prop_area >= 0.01) %>%
+  ggplot(aes(cat_full, prop_area)) + geom_bar(stat="identity") + 
+  theme(axis.text.x=element_text(angle=270, hjust=0, vjust=0.5, lineheight=0.7)) + 
+  labs(x="", y="Proportion of Vaud", title="Categories with >1% coverage")
+
+```
+
+Or scroll through all categories, sorted by percent coverage:
+
+```{r cat_full_table, echo=F, message=F}
+lc_VD %>% st_set_geometry(NULL) %>%
+  group_by(Dataset, cat_full) %>% summarise(tot_area=as.numeric(sum(area))) %>%
+  ungroup %>% mutate(`Coverage (%)`=round(tot_area/sum(tot_area)*100, 1)) %>%
+  arrange(desc(`Coverage (%)`)) %>% 
+  select(-tot_area) %>% 
+  mutate(cat_full=str_sub(cat_full, 1, 40)) %>%
+  rename(`Category (truncated)`=cat_full)
+```
+
+------------------------------------------------------------------------
+
+# Intersect with points
+
+The 5m-buffered points need to be intersected with the landcover dataset. The categorization is assigned as the most abundant category within the 5m buffer, following methods in [the locational precision EDA](code/00_eda-1-coord-habitat.html#Habitat:_Points__buffers).
+
+```{r intersect_buffer, eval=FALSE}
+lc_VD <- st_make_valid(lc_VD)
+full_obs.df <- intersect_with_composition(pub.5m, lc_VD, "cat_full")
+st_write(full_obs.df, paste0(gis_dir, "opfo_corine_use_21781.shp"))
+```
+
+```{r load_intersect, message=F, warning=F}
+full_obs.df <- st_read(paste0(gis_dir, "opfo_corine_use_21781.shp")) %>%
+  categorize_buffers(., "cat_full", "full") %>%
+  mutate(across(starts_with("cat_"), as.character),
+         Dataset=if_else(grepl(":", cat_full), "CORINE", "VD_LU"),
+         code_full=paste0(str_sub(Dataset, 1, 2), "_", str_sub(cat_full, 1, 3)))
+```
+
+In all of Vaud, there are `r n_distinct(lc_VD$cat_full)` categories. Using the 5m buffers, there are `r n_distinct(full_obs.df$cat_full)` categories.
+
+```{r obs_full_distribution, echo=F, message=F, warning=F}
+full_obs_props <- full_obs.df %>%
+  group_by(Dataset, cat_full) %>% summarise(tot_pts=n()) %>%
+  ungroup %>% mutate(prop_area=tot_pts/sum(tot_pts)) 
+full_obs_props %>%
+  filter(prop_area > 0.01) %>%
+  ggplot(aes(cat_full, prop_area, fill=Dataset)) + geom_bar(stat="identity") + 
+  theme(axis.text.x=element_text(angle=270, hjust=0, vjust=0.5)) + 
+  labs(x="", y="Proportion of samples", title="Categories with >1% coverage")
+
+```
+
+With the joint GIS layer, there is a bit more uncertainty compared to [each dataset separately](00_eda-1-coord-habitat.html#Habitat:_Points__buffers), but that is almost inevitable, since the large CORINE polygons are broken up by the smaller land use polygons, and the land use polygons now have CORINE polygons where before there was no data. Still, it is better than the OpFo dataset, with `r paste0(round(sum(full_obs.df$n_full==1)/nrow(full_obs.df)*100, 1), "%")` of buffers capturing only a single land use / land cover type.
+
+```{r obs_n_cat, echo=F, message=F, warning=F}
+full_obs.df %>% group_by(n_full) %>%
+  summarise(n_tubes=n()) %>% ungroup %>%
+  mutate(prop_tubes=n_tubes/sum(n_tubes)) %>%
+  ggplot(aes(x=n_full, y=prop_tubes)) +
+  geom_hline(yintercept=0, size=0.3, colour="grey30") +
+  geom_bar(position="dodge", stat="identity", colour="grey30", size=0.3) +
+  scale_y_continuous(labels=scales::percent_format()) + 
+  labs(x="Number of categories in 5m buffer", y="Percent of tubes", 
+       title=paste0(round(sum(full_obs.df$n_full==1)/nrow(full_obs.df)*100, 1), 
+                    "% of buffers include only 1 category"))
+ggplot(filter(full_obs.df, n_full > 1), aes(x=prLargest_full)) + 
+  geom_histogram() + xlim(0, 1) +
+  labs(x="Proportional coverage of largest category", y="Tubes",
+       title=paste0("Coverage for ", 
+                    round(sum(full_obs.df$n_full>1)/nrow(full_obs.df)*100, 1), 
+                    "% of tubes with >1 category"))
+```
+
+As hinted in the above plot, a large majority of collections (`r paste0(round(sum(full_obs.df$Dataset=="CORINE")/nrow(full_obs.df), 3)*100, "%")`) fall into the CORINE polygons. Many of these are in urban (`r paste0(round(sum(grepl("11[1-2]: ", full_obs.df$cat_full))/nrow(full_obs.df), 3)*100, "%")`) or forested (`r paste0(round(sum(grepl("31[1-3]: ", full_obs.df$cat_full))/nrow(full_obs.df), 3)*100, "%")`) areas.
+
+There are a few CORINE categories that are somewhat vague catch-alls. Looking at a satellite overlay in QGIS, the largest patches of *211: Non-irrigated arable land*, *243: Land principally occupied by agriculture, with significant areas of natural vegetation*, and *321: Natural grasslands* are pastures, though not exclusively. In some areas, they include smaller patches of buildings or forest. This is inevitable with CORINE, which has a [minimum mapping unit of 25ha](https://land.copernicus.eu/pan-european/corine-land-cover). The documentation also only states a thematic accuracy of ≥85%, without additional detail.
+
+# Output full categories
+
+Output categories to upload to google drive, where they will be aggregated.
+
+```{r output_cat_full, eval=F}
+
+lc_VD %>% st_set_geometry(NULL) %>%
+  group_by(Dataset, cat_full) %>% summarise(tot_area=as.numeric(sum(area))) %>%
+  ungroup %>% 
+  mutate(prop_area=tot_area/sum(tot_area)) %>%
+  mutate(in_collections=cat_full %in% full_obs_props$cat_full,
+         prop_collections=full_obs_props$prop_area[match(cat_full,
+                                                         full_obs_props$cat_full)],
+         code_full=paste0(str_sub(Dataset, 1, 2), "_", str_sub(cat_full, 1, 3))) %>%
+  arrange(desc(in_collections), Dataset, cat_full) %>%
+  write_csv("temp/corine_open_category_lookup.csv")
 ```
