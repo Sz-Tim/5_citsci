@@ -1,6 +1,6 @@
 ---
 title: "Opération Fourmis Public Inventory EDA"
-subtitle: "CORINE and VD land use"
+subtitle: "2: CORINE and VD land use"
 author: "Tim Szewczyk"
 output:
   html_document:

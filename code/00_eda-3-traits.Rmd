@@ -1,6 +1,6 @@
 ---
 title: "Opération Fourmis Public Inventory EDA"
-subtitle: "Species-level traits"
+subtitle: "3: Species-level traits"
 author: "Tim Szewczyk"
 output:
   html_document:
