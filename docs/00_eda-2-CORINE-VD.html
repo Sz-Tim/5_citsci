@@ -245,7 +245,7 @@ div.tocify {
 
 
 <h1 class="title toc-ignore">Opération Fourmis Public Inventory EDA</h1>
-<h3 class="subtitle">CORINE and VD land use</h3>
+<h3 class="subtitle">2: CORINE and VD land use</h3>
 <h4 class="author">Tim Szewczyk</h4>
 
 </div>
@@ -296,7 +296,8 @@ st_write(full_obs.df, paste0(gis_dir, &quot;opfo_corine_use_21781.shp&quot;))</c
 <pre class="r"><code>full_obs.df &lt;- st_read(paste0(gis_dir, &quot;opfo_corine_use_21781.shp&quot;)) %&gt;%
   categorize_buffers(., &quot;cat_full&quot;, &quot;full&quot;) %&gt;%
   mutate(across(starts_with(&quot;cat_&quot;), as.character),
-         Dataset=if_else(grepl(&quot;:&quot;, cat_full), &quot;CORINE&quot;, &quot;VD_LU&quot;))</code></pre>
+         Dataset=if_else(grepl(&quot;:&quot;, cat_full), &quot;CORINE&quot;, &quot;VD_LU&quot;),
+         code_full=paste0(str_sub(Dataset, 1, 2), &quot;_&quot;, str_sub(cat_full, 1, 3)))</code></pre>
 <pre><code>## Reading layer `opfo_corine_use_21781&#39; from data source `/Users/tsz/Documents/unil/opfo_main/2_gis/data/VD_21781/opfo_corine_use_21781.shp&#39; using driver `ESRI Shapefile&#39;
 ## Simple feature collection with 7921 features and 4 fields
 ## geometry type:  MULTIPOLYGON
@@ -318,7 +319,9 @@ st_write(full_obs.df, paste0(gis_dir, &quot;opfo_corine_use_21781.shp&quot;))</c
   ungroup %&gt;% 
   mutate(prop_area=tot_area/sum(tot_area)) %&gt;%
   mutate(in_collections=cat_full %in% full_obs_props$cat_full,
-         prop_collections=full_obs_props$prop_area[match(cat_full, full_obs_props$cat_full)]) %&gt;%
+         prop_collections=full_obs_props$prop_area[match(cat_full,
+                                                         full_obs_props$cat_full)],
+         code_full=paste0(str_sub(Dataset, 1, 2), &quot;_&quot;, str_sub(cat_full, 1, 3))) %&gt;%
   arrange(desc(in_collections), Dataset, cat_full) %&gt;%
   write_csv(&quot;temp/corine_open_category_lookup.csv&quot;)</code></pre>
 </div>
