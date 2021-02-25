@@ -7,6 +7,8 @@
 *.nb.html
 .DS_Store
 
+notes.md
+
 # User-specific files
 .Ruserdata
 
