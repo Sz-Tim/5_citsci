@@ -153,7 +153,7 @@ full_obs_props %>%
   filter(prop_area > 0.01) %>%
   ggplot(aes(cat_full, prop_area, fill=Dataset)) + geom_bar(stat="identity") + 
   theme(axis.text.x=element_text(angle=270, hjust=0, vjust=0.5)) + 
-  labs(x="", y="Proportion of samples", title="Categories with >1% coverage")
+  labs(x="", y="Proportion of samples", title="Categories with >1% of tubes")
 
 ```
 
@@ -223,7 +223,7 @@ lc_VD %>% st_set_geometry(NULL) %>%
 
 # Ambiguous categories  {.tabset .tabset-fade}
 
-For several categories, it is not obvious (to me) how they should be re-categorized. These are shown here, with examples of satellite imagery.  
+For several categories, it is not obvious (to me) how they should be re-categorized. These are shown here, with examples of satellite imagery. Some are only a few tubes.  
 
 ## 141: Green urban areas  
 Urban?  
@@ -234,7 +234,7 @@ Urban?
 
 
 ## 211: Non-irigated arable land
-Pasture?  
+Agriculture (tilled?)? Mostly space between VD parcels.  
 ![211](../assets/corine_use_small/211_VD.png){width="49%"}
 ![211_a](../assets/corine_use_small/211_a.png){width="49%"}
 ![211_b](../assets/corine_use_small/211_b.png){width="49%"}
@@ -242,7 +242,7 @@ Pasture?
 
 
 ## 242: Complex cultivation patterns
-Urban?  
+Urban? Mostly space between VD parcels, but nearer to buildings than 211.    
 ![242](../assets/corine_use_small/242_VD.png){width="49%"}
 ![242_a](../assets/corine_use_small/242_a.png){width="49%"}
 ![242_b](../assets/corine_use_small/242_b.png){width="49%"}
@@ -282,7 +282,7 @@ Pasture? Wetland?
 
 
 ## 545 Cult. mar. plein champ
-Agricultural tilled? non-tilled?  
+Agricultural tilled?  
 ![545](../assets/corine_use_small/545_VD.png){width="49%"}
 ![545_a](../assets/corine_use_small/545_a.png){width="49%"}
 ![545_b](../assets/corine_use_small/545_b.png){width="49%"}
