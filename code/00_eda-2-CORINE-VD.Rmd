@@ -97,7 +97,8 @@ lc_VD %>% st_set_geometry(NULL) %>%
   ungroup %>% mutate(prop_area=tot_area/sum(tot_area)) %>%
   filter(prop_area >= 0.01) %>%
   ggplot(aes(cat_full, prop_area)) + geom_bar(stat="identity") + 
-  theme(axis.text.x=element_text(angle=270, hjust=0, vjust=0.5, lineheight=0.7)) + 
+  theme(axis.text.x=element_text(angle=270, hjust=0, vjust=0.5, 
+                                 lineheight=0.7)) + 
   labs(x="", y="Proportion of Vaud", title="Categories with >1% coverage")
 
 ```
@@ -114,7 +115,15 @@ lc_VD %>% st_set_geometry(NULL) %>%
   rename(`Category (truncated)`=cat_full)
 ```
 
+
+
+
+
 ------------------------------------------------------------------------
+
+
+
+
 
 # Intersect with points
 
@@ -173,6 +182,16 @@ As hinted in the above plot, a large majority of collections (`r paste0(round(su
 
 There are a few CORINE categories that are somewhat vague catch-alls. Looking at a satellite overlay in QGIS, the largest patches of *211: Non-irrigated arable land*, *243: Land principally occupied by agriculture, with significant areas of natural vegetation*, and *321: Natural grasslands* are pastures, though not exclusively. In some areas, they include smaller patches of buildings or forest. This is inevitable with CORINE, which has a [minimum mapping unit of 25ha](https://land.copernicus.eu/pan-european/corine-land-cover). The documentation also only states a thematic accuracy of ≥85%, without additional detail.
 
+
+
+
+
+------------------------------------------------------------------------
+
+
+
+
+
 # Output full categories
 
 Output categories to upload to google drive, where they will be aggregated.
@@ -184,9 +203,141 @@ lc_VD %>% st_set_geometry(NULL) %>%
   ungroup %>% 
   mutate(prop_area=tot_area/sum(tot_area)) %>%
   mutate(in_collections=cat_full %in% full_obs_props$cat_full,
-         prop_collections=full_obs_props$prop_area[match(cat_full,
-                                                         full_obs_props$cat_full)],
-         code_full=paste0(str_sub(Dataset, 1, 2), "_", str_sub(cat_full, 1, 3))) %>%
+         prop_collections=full_obs_props$prop_area[match(cat_full,full_obs_props$cat_full)],
+         code_full=paste0(str_sub(Dataset, 1, 2), "_", 
+                          str_sub(cat_full, 1, 3))) %>%
   arrange(desc(in_collections), Dataset, cat_full) %>%
   write_csv("temp/corine_open_category_lookup.csv")
 ```
+
+
+
+
+
+
+------------------------------------------------------------------------
+
+
+
+
+
+# Ambiguous categories  {.tabset .tabset-fade}
+
+For several categories, it is not obvious (to me) how they should be re-categorized. These are shown here, with examples of satellite imagery.  
+
+## 141: Green urban areas  
+Urban?  
+![141](../assets/corine_use_small/141_VD.png){width="49%"}
+![141_a](../assets/corine_use_small/141_a.png){width="49%"}
+![141_b](../assets/corine_use_small/141_b.png){width="49%"}
+![141_c](../assets/corine_use_small/141_c.png){width="49%"}
+
+
+## 211: Non-irigated arable land
+Pasture?  
+![211](../assets/corine_use_small/211_VD.png){width="49%"}
+![211_a](../assets/corine_use_small/211_a.png){width="49%"}
+![211_b](../assets/corine_use_small/211_b.png){width="49%"}
+![211_c](../assets/corine_use_small/211_c.png){width="49%"}
+
+
+## 242: Complex cultivation patterns
+Urban?  
+![242](../assets/corine_use_small/242_VD.png){width="49%"}
+![242_a](../assets/corine_use_small/242_a.png){width="49%"}
+![242_b](../assets/corine_use_small/242_b.png){width="49%"}
+![242_c](../assets/corine_use_small/242_c.png){width="49%"}
+
+
+## 243: Land principally occupied by agriculture, with significant areas of natural vegetation
+Pasture?  
+![243](../assets/corine_use_small/243_VD.png){width="49%"}
+![243_a](../assets/corine_use_small/243_a.png){width="49%"}
+![243_b](../assets/corine_use_small/243_b.png){width="49%"}
+![243_c](../assets/corine_use_small/243_c.png){width="49%"}
+
+
+## 322: Moors and heathland
+Transition? Pasture?  
+![322](../assets/corine_use_small/322_VD.png){width="49%"}
+![322_a](../assets/corine_use_small/322_a.png){width="49%"}
+![322_b](../assets/corine_use_small/322_b.png){width="49%"}
+![322_c](../assets/corine_use_small/322_c.png){width="49%"}
+
+
+## 324: Transitional woodland-shrub
+Transition? Pasture?  
+![324](../assets/corine_use_small/324_VD.png){width="49%"}
+![324_a](../assets/corine_use_small/324_a.png){width="49%"}
+![324_b](../assets/corine_use_small/324_b.png){width="49%"}
+![324_c](../assets/corine_use_small/324_c.png){width="49%"}
+
+
+## 411: Inland marshes
+Pasture? Wetland?  
+![411](../assets/corine_use_small/411_VD.png){width="49%"}
+![411_a](../assets/corine_use_small/411_a.png){width="49%"}
+![411_b](../assets/corine_use_small/411_b.png){width="49%"}
+![411_c](../assets/corine_use_small/411_c.png){width="49%"}
+
+
+## 545 Cult. mar. plein champ
+Agricultural tilled? non-tilled?  
+![545](../assets/corine_use_small/545_VD.png){width="49%"}
+![545_a](../assets/corine_use_small/545_a.png){width="49%"}
+![545_b](../assets/corine_use_small/545_b.png){width="49%"}
+![545_c](../assets/corine_use_small/545_c.png){width="49%"}
+
+
+## 717 Surf. viti. biodiv.
+Urban? Transition? Agriculture?  
+![717](../assets/corine_use_small/717_VD.png){width="49%"}
+![717_a](../assets/corine_use_small/717_a.png){width="49%"}
+![717_b](../assets/corine_use_small/717_b.png){width="49%"}
+![717_c](../assets/corine_use_small/717_c.png){width="49%"}
+
+
+## 720 Châtaigneraies
+Forest?  
+![720](../assets/corine_use_small/720_VD.png){width="49%"}
+![720_a](../assets/corine_use_small/720_a.png){width="49%"}
+![720_b](../assets/corine_use_small/720_b.png){width="49%"}
+![720_c](../assets/corine_use_small/720_c.png){width="49%"}
+
+
+## 801 C mar s abri avec fond.
+Agriculture tilled? But maybe in a greenhouse...?  
+![801](../assets/corine_use_small/801_VD.png){width="49%"}
+![801_a](../assets/corine_use_small/801_a.png){width="49%"}
+
+
+## 851 Surfaces a litière
+Pasture?
+![851](../assets/corine_use_small/851_VD.png){width="49%"}
+![851_a](../assets/corine_use_small/851_a.png){width="49%"}
+
+
+## 902 Surfaces improductives
+Urban?  
+![902](../assets/corine_use_small/902_VD.png){width="49%"}
+![902_a](../assets/corine_use_small/902_a.png){width="49%"}
+![902_b](../assets/corine_use_small/902_b.png){width="49%"}
+![902_c](../assets/corine_use_small/902_c.png){width="49%"}
+
+
+## 907 Chem nat non stabilisés
+Pasture?  
+![907](../assets/corine_use_small/907_VD.png){width="49%"}
+![907_a](../assets/corine_use_small/907_a.png){width="49%"}
+![907_b](../assets/corine_use_small/907_b.png){width="49%"}
+
+
+## 998 Autres surfaces hors sau
+Urban? Agriculture non-tilled? Prairie?  
+![998](../assets/corine_use_small/998_VD.png){width="49%"}
+![998_a](../assets/corine_use_small/998_a.png){width="49%"}
+
+
+
+
+
