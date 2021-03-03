@@ -257,6 +257,14 @@ Pasture?
 ![243_c](../assets/corine_use_small/243_c.png){width="49%"}
 
 
+## 321: Natural grasslands
+Mostly high elevation grasslands which are grazed  
+![211](../assets/corine_use_small/321_VD.png){width="49%"}
+![211_a](../assets/corine_use_small/321_a.png){width="49%"}
+![211_b](../assets/corine_use_small/321_b.png){width="49%"}
+![211_c](../assets/corine_use_small/321_c.png){width="49%"}
+
+
 ## 322: Moors and heathland
 Transition? Pasture?  
 ![322](../assets/corine_use_small/322_VD.png){width="49%"}
