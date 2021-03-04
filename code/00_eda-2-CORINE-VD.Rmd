@@ -325,6 +325,14 @@ Pasture?
 ![851_a](../assets/corine_use_small/851_a.png){width="49%"}
 
 
+## 852 Haies bosq + bande herb.
+
+![852](../assets/corine_use_small/852_VD.png){width="49%"}
+![852_a](../assets/corine_use_small/852_a.png){width="49%"}
+![852_b](../assets/corine_use_small/852_b.png){width="49%"}
+![852_c](../assets/corine_use_small/852_c.png){width="49%"}
+
+
 ## 902 Surfaces improductives
 Urban?  
 ![902](../assets/corine_use_small/902_VD.png){width="49%"}
